@@ -20,6 +20,9 @@ async def get_settings(category):
 
 
 async def process_spot_linear_settings():
+
+    # returns tuple of two spot + linear
+
     tasks = [
         asyncio.create_task(get_settings('spot')),
         asyncio.create_task(get_settings('linear'))
@@ -27,6 +30,7 @@ async def process_spot_linear_settings():
 
     results = await asyncio.gather(*tasks)
 
+    # Process spot symbols
     spot_symbols = [
         {
             'name': element.get('symbol'),
@@ -41,7 +45,25 @@ async def process_spot_linear_settings():
         if element.get('status') == 'Trading' and element.get('quoteCoin') == 'USDT'
     ]
 
-    linear_symbols = 'RECEIVED BUT NOT CONFIGURED'
+    # Process linear symbols
+    linear_symbols = [
+        {
+            'name': element.get('symbol'),
+            'short_name': element.get('symbol')[:-4],
+            'min_leverage': element.get('leverageFilter').get('minLeverage'),
+            'max_leverage': element.get('leverageFilter').get('maxLeverage'),
+            'leverage_step': element.get('leverageFilter').get('leverageStep'),
+            'unified_margin_trade': element.get('unifiedMarginTrade'),
+            'min_price': element.get('priceFilter').get('minPrice'),
+            'max_price': element.get('priceFilter').get('maxPrice'),
+            'price_tick_size': element.get('priceFilter').get('tickSize'),
+            'max_order_qty': element.get('lotSizeFilter').get('maxOrderQty'),
+            'min_order_qty': element.get('lotSizeFilter').get('minOrderQty'),
+            'qty_step': element.get('lotSizeFilter').get('qtyStep')
+        }
+        for element in results[1].get('result').get('list')
+        if element.get('contractType') == 'LinearPerpetual' and element.get('status') == 'Trading' and element.get('quoteCoin') == 'USDT'
+    ]
 
     return spot_symbols, linear_symbols
 
