@@ -125,6 +125,31 @@ class SpotPairsOperations:
                 }
             return data
 
+    async def get_all_spot_pairs_data(self):
+        async with self.async_session() as session:
+            result = await session.execute(
+                text(
+                    "SELECT * FROM spot_pairs"
+                )
+            )
+            rows = result.mappings().all()
+
+            data = {}
+            for row in rows:
+                short_name = row['short_name']
+                data[short_name] = {
+                    'name': row['name'],
+                    'short_name': row['short_name'],
+                    'if_trading': row['if_trading'],
+                    'margin_trading': row['margin_trading'],
+                    'base_precision': row['base_precision'],
+                    'quote_precision': row['quote_precision'],
+                    'min_order_qty': row['min_order_qty'],
+                    'max_order_qty': row['max_order_qty'],
+                    'tick_size': row['tick_size']
+                }
+            return data
+
 # ####### LINEAR ########
 #     ############
 #        #####
@@ -247,6 +272,34 @@ class LinearPairsOperations:
                     'qty_step': row['qty_step']
                 }
             return data
+
+    async def get_all_linear_pairs_data(self) -> Dict[str, Dict[str, Optional[str]]]:
+        async with self.async_session() as session:
+            result = await session.execute(
+                text("SELECT * FROM linear_pairs")
+            )
+            rows = result.mappings().all()
+
+            data = {}
+            for row in rows:
+                short_name = row['short_name']
+                data[short_name] = {
+                    'name': row['name'],
+                    'short_name': row['short_name'],
+                    'if_trading': row['if_trading'],
+                    'min_leverage': row['min_leverage'],
+                    'max_leverage': row['max_leverage'],
+                    'leverage_step': row['leverage_step'],
+                    'unified_margin_trade': row['unified_margin_trade'],
+                    'min_price': row['min_price'],
+                    'max_price': row['max_price'],
+                    'price_tick_size': row['price_tick_size'],
+                    'max_order_qty': row['max_order_qty'],
+                    'min_order_qty': row['min_order_qty'],
+                    'qty_step': row['qty_step']
+                }
+
+        return data
 
 
 if __name__ == '__main__':

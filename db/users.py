@@ -1,7 +1,7 @@
 import os
 import asyncio
 from dotenv import load_dotenv
-from sqlalchemy import Column, String, Boolean, BigInteger, Float, Integer, text
+from sqlalchemy import Column, String, Boolean, BigInteger, Float, Integer, text, DateTime, func
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.dialects.postgresql import insert
@@ -31,6 +31,7 @@ class Users(BaseUsers):
     is_admin = Column(Boolean, default=False)
     subscription = Column(BigInteger, nullable=True)
     stop_trading = Column(Boolean, default=True)
+    created = Column(DateTime, server_default=func.now())  # Automatically set to current timestamp
 
     # api
     main_api_key = Column(String, nullable=True)
@@ -137,8 +138,50 @@ class UsersOperations:
 
 if __name__ == '__main__':
     async def main():
-        users = UsersOperations(DATABASE_URL)
-        await users.create_table()
+        db_users = UsersOperations(DATABASE_URL)
+        await db_users.create_table()
+
+        users_data = [
+            {
+                'telegram_id': 1,
+                'is_admin': True,
+                'subscription': 1712265600,  # Example timestamp
+                'stop_trading': True,
+                'main_api_key': 'main_api_key_1',
+                'main_secret_key': 'main_secret_key_1'
+            },
+            {
+                'telegram_id': 2,
+                'subscription': 1712265600,
+                'stop_trading': False,
+                'main_api_key': 'main_api_key_2',
+                'main_secret_key': 'main_secret_key_2'
+            },
+            {
+                'telegram_id': 3,
+                'subscription': 1712265600,
+                'stop_trading': True,
+                'main_api_key': 'main_api_key_3',
+                'main_secret_key': 'main_secret_key_3'
+            },
+            {
+                'telegram_id': 4,
+                'subscription': 1712265600,
+                'stop_trading': False,
+                'main_api_key': 'main_api_key_4',
+                'main_secret_key': 'main_secret_key_4'
+            },
+            {
+                'telegram_id': 5,
+                'subscription': 1712265600,
+                'stop_trading': True,
+                'main_api_key': 'main_api_key_5',
+                'main_secret_key': 'main_secret_key_5'
+            }
+        ]
+
+        for user_data in users_data:
+            await db_users.upsert_user(user_data)
 
 
     asyncio.run(main())
