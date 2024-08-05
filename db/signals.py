@@ -31,6 +31,7 @@ class Signals(Base):
     # signal_id = Column(String, primary_key=True)
     signal_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     direction = Column(String, nullable=False)
+    channel_id = Column(String, nullable=True)
     coin = Column(String, nullable=False)
     created = Column(DateTime, server_default=func.now())
 
@@ -88,23 +89,26 @@ async def main():
     db_signals = SignalsOperations(DATABASE_URL)
 
     # Создание таблицы
-    # await db_signals.create_table()
+    await db_signals.create_table()
 
     # Добавление или обновление сигналов
     await db_signals.upsert_signal({
        #"signal_id": "1",
        "direction": "buy",
-       "coin": "BTC"
+       "coin": "BTC",
+       "channel_id": '202'
+
     })
     await db_signals.upsert_signal({
        #"signal_id": "2",
        "direction": "sell",
-       "coin": "ETH"
+       "coin": "ETH",
+       "channel_id": '202'
     })
 
     # Получение и удаление всех сигналов
-    all_signals = await db_signals.get_and_clear_all_signals()
-    print("All signals:", all_signals)
+    #all_signals = await db_signals.get_and_clear_all_signals()
+    #print("All signals:", all_signals)
 
 
 if __name__ == "__main__":

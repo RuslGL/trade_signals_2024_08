@@ -29,6 +29,7 @@ class TgChannels(BaseChannels):
     __tablename__ = 'tg_channels'
 
     token = Column(String, primary_key=True, nullable=False)
+    telegram_id = Column(String, nullable=False)
     name = Column(String, nullable=True)
     channel_type = Column(String, default='trade_signals') # averaging_signals also available
     created = Column(DateTime, server_default=func.now())  # Automatically set to current timestamp
@@ -92,6 +93,17 @@ class TgChannelsOperations:
                         setattr(channel, key, value)
                     session.add(channel)
             await session.commit()
+
+
+    async def get_averaging_signals_telegram_ids(self) -> list:
+        async with self.async_session() as session:
+            async with session.begin():
+                # Выполняем запрос с фильтрацией по channel_type
+                query = select(TgChannels.telegram_id).filter(TgChannels.channel_type == 'averaging_signals')
+                result = await session.execute(query)
+                telegram_ids = result.scalars().all()
+
+                return telegram_ids
 
 
 async def main():
