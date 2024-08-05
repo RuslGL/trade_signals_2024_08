@@ -1,7 +1,7 @@
 import os
 import asyncio
 from dotenv import load_dotenv
-from sqlalchemy import Column, String, Boolean, text
+from sqlalchemy import Column, String, Boolean, text, DateTime, func
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.dialects.postgresql import insert
