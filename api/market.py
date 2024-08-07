@@ -68,10 +68,43 @@ async def process_spot_linear_settings():
     return spot_symbols, linear_symbols
 
 
+async def get_tickers(category):
+    """
+    Returns tickers on given category.
+    """
+    url = st.mainnet_url + st.ENDPOINTS.get('get_tick')
+    # url = base_url + get_tick
+
+    params = {
+        'category': category,
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, params=params) as response:
+            return await response.json()
+
+
+async def get_prices():
+    """
+    Returns all prices for spot and linear
+    returns structure ({spot}, {linear})
+    """
+
+    tasks = [
+        asyncio.create_task(get_tickers('spot')),
+        asyncio.create_task(get_tickers('linear')),
+    ]
+    tasks_res = await asyncio.gather(*tasks)
+    spot = {item['symbol']: item['lastPrice'] for item in tasks_res[0].get('result').get('list')}
+    linear = {item['symbol']: item['lastPrice'] for item in tasks_res[1].get('result').get('list')}
+
+    return spot, linear
+
+
 if __name__ == '__main__':
     async def main():
-        res = await process_spot_linear_settings()
-        print(res[1])
+        # res = await process_spot_linear_settings()
+        res = await get_prices()
+        print(res[0])
 
 
     asyncio.run(main())

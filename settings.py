@@ -7,7 +7,9 @@ testnet_url = 'https://api-testnet.bybit.com'
 
 ENDPOINTS = {
     # market endpoints
-    'get_instruments_info': '/v5/market/instruments-info'
+    'get_instruments_info': '/v5/market/instruments-info',
+    'get_tick': '/v5/market/tickers',
+
 
     # trade endpoints
 
