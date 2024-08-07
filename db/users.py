@@ -44,7 +44,7 @@ class Users(BaseUsers):
     testnet_secret_key = Column(String, nullable=True)
 
     # trade
-    trade_type = Column(String, nullable=True) # real/demo
+    trade_type = Column(String, nullable='real') # real/demo
 
     min_trade = Column(Float, nullable=True)
     max_trade = Column(Float, nullable=True)
@@ -141,6 +141,8 @@ if __name__ == '__main__':
         db_users = UsersOperations(DATABASE_URL)
         await db_users.create_table()
 
+
+
         users_data = [
             {
                 'telegram_id': 1,
@@ -180,8 +182,11 @@ if __name__ == '__main__':
             }
         ]
 
-        for user_data in users_data:
-            await db_users.upsert_user(user_data)
+        # for user_data in users_data:
+        #     await db_users.upsert_user(user_data)
+
+
+        admin_id = int(os.getenv('owner_id'))
 
 
     asyncio.run(main())
