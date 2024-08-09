@@ -19,9 +19,8 @@ class Keyboards:
 #### SUBSCRIPTION PROCESS
     async def buy_subscription(self, params):
 
-
         btn_1 = InlineKeyboardButton(
-            text = '1 МЕСЯЦ',
+            text='1 МЕСЯЦ',
             callback_data='one_month',
         )
         btn_2 = InlineKeyboardButton(
@@ -43,7 +42,8 @@ class Keyboards:
 
 
     async def confirm_payment(self, params):
-        subs = params.get('subs')+'_conf'
+        user_id = params['id']
+        subs = 'conf_' + params.get('subs')+'_'+str(user_id)
         print(subs)
         btn_1 = InlineKeyboardButton(
             text='ОПЛАЧЕНО',
@@ -56,10 +56,13 @@ class Keyboards:
 
     async def admin_payment_confirmation(self, params):
         subs = params.get('subs')
-        print(subs)
+        user_id = params.get('user_id')
+        #print(params)
+        call = 'confirmed_' + subs + '_' + str(user_id)
+        print(call)
         btn_1 = InlineKeyboardButton(
             text='ПОДТВЕРЖДАЮ',
-            callback_data='confirmed_id='
+            callback_data=call
         )
 
         our_menu = [[btn_1]]

@@ -580,6 +580,8 @@ async def start(message: types.Message):
     if not params:
         subscriptions_op = SubscriptionsOperations(DATABASE_URL)
         params = await subscriptions_op.get_all_subscriptions_data()
+        params['new_user_id'] = telegram_id
+        print(params)
         await bot.send_message(
             chat_id=telegram_id,
             text=f' 🔒🔒🔒\n\nВы не являетесь зарегистрированным пользователем \n\n🔑🔑🔑'
@@ -608,6 +610,7 @@ async def handle_subscription(callback_query):
 
     params = {
         'subs': action,
+        'id': telegram_id
     }
 
     # print(params)
@@ -619,29 +622,34 @@ async def handle_subscription(callback_query):
         reply_markup=await kbd.confirm_payment(params)
     )
 
-@dp.callback_query(F.data.in_(['one_month_conf', 'six_month_conf', 'one_year_conf', 'forewer_conf']))
+
+
+#@dp.callback_query(F.data.in_(['one_month_conf', 'six_month_conf', 'one_year_conf', 'forewer_conf']))
+
+@dp.callback_query(F.data.startswith('conf_'))
 async def confirm_subscription(callback_query):
     telegram_id = callback_query.from_user.id
     name = f'{callback_query.from_user.first_name} {callback_query.from_user.last_name}'
 
     # Извлечение значения callback_data
     action = callback_query.data
-    subscriptions_op = SubscriptionsOperations(DATABASE_URL)
-    params = await subscriptions_op.get_all_subscriptions_data()
+    #subscriptions_op = SubscriptionsOperations(DATABASE_URL)
+    #params = await subscriptions_op.get_all_subscriptions_data()
 
-    if action == 'one_month':
-        subs = params.get('1 МЕСЯЦ')
-    if action == 'six_month':
-        subs = params.get('6 МЕСЯЦЕВ')
-    if action == 'one_year':
-        subs = params.get('1 ГОД')
-    if action == 'forewer':
-        subs = params.get('НАВСЕГДА')
+    if 'one_month' in action:
+        subs = '1 МЕСЯЦ'
+    if 'six_month' in action:
+        subs = '6 МЕСЯЦЕВ'
+    if 'one_year' in action:
+        subs = '1 ГОД'
+    if 'forewer' in action:
+        subs = 'НАВСЕГДА'
 
     params = {
-        'subs': 'пусто',
+        'subs': subs,
+        'user_id': telegram_id,
     }
-
+    #print(params)
     await bot.send_message(
         chat_id=telegram_id,
         text='Проверяем оплату, обычно это занимает несколько минут.'
@@ -655,20 +663,27 @@ async def confirm_subscription(callback_query):
 
 
 
-F.text.regexp(r'Hello, .+')
+#F.text.regexp(r'Hello, .+')
 @dp.callback_query(F.data.startswith('confirmed'))
-async def confirmed_payment(message: types.Message):
-    telegram_id = message.from_user.id
+async def confirmed_payment(callback_query):
+    telegram_id = callback_query.from_user.id
+    action = callback_query.data
+    parts = action.split("_")
+    subs = parts[1]
+    user_id = parts[2]
+
 
     #### telegram_id = message.from_user.id
     await bot.send_message(
-        chat_id=telegram_id,
+        chat_id=user_id,
         text='ИЗМЕНИТЬ В БАЗЕ.  ПОЗДРАВЛЯЕМ ОПЛАТА ПРОШЛА'
     )
 
     await bot.send_message(
-        chat_id=ADMIN_ID,
-        text='ИЗМЕНИТЬ В БАЗЕ. ПОДПИСКА ЮЗЕРА ПОДВЕРЖДЕНА'
+        chat_id=telegram_id,
+        text=f'ИЗМЕНИТЬ В БАЗЕ. ПОДПИСКА ЮЗЕРА ПОДВЕРЖДЕНА\n\n\n'
+             f'user_id={user_id}\n'
+             f'подписка = {subs}'
     )
 
 

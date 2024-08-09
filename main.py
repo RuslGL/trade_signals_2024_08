@@ -139,5 +139,6 @@ def main():
     trade_performance_process.join()
     price_update_process.join()
 
+
 if __name__ == "__main__":
     main()
