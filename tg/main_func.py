@@ -6,6 +6,10 @@ from dotenv import load_dotenv
 import re
 
 
+import time
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -577,7 +581,9 @@ async def start(message: types.Message):
     telegram_id = message.from_user.id
     params = await get_user_settings(telegram_id)
     print(params)
-    if not params:
+    # Vremenno dla testa
+    if True:
+    # if not params:
         subscriptions_op = SubscriptionsOperations(DATABASE_URL)
         params = await subscriptions_op.get_all_subscriptions_data()
         params['new_user_id'] = telegram_id
@@ -657,7 +663,8 @@ async def confirm_subscription(callback_query):
 
     await bot.send_message(
         chat_id=ADMIN_ID,
-        text=f'Юзер {name} c id {telegram_id} запрашивает подверждение оплаты. Подтвердить? ЗДЕСЬ КНОПКИ ПОДВЕРЖДЕНИЯ И ОТПРАВКА ЮЗЕРУ',
+        text=f'Юзер {name} c id {telegram_id} запрашивает подверждение оплаты.'
+             f'\n\n Подтвердить? ЗДЕСЬ КНОПКИ ПОДВЕРЖДЕНИЯ И ОТПРАВКА ЮЗЕРУ',
         reply_markup=await kbd.admin_payment_confirmation(params)
     )
 
@@ -671,17 +678,50 @@ async def confirmed_payment(callback_query):
     parts = action.split("_")
     subs = parts[1]
     user_id = parts[2]
+    # print(subs)
+    # print(user_id)
+
+    user_op = UsersOperations(DATABASE_URL)
+
+    # создаем юзера в БД с подпиской, если такой юзер есть - функция только обновит/продлит подписку
+    try:
+        start = (await user_op.get_user_data(int(user_id))).get('subscription')
+        start = datetime.fromtimestamp(start)
+    except:
+        start = datetime.now()
+
+
+    if subs == '6 МЕСЯЦЕВ':
+        period = start + relativedelta(months=6)
+        subs = int(time.mktime(period.timetuple()))
+    elif subs == '1 ГОД':
+        period = start + relativedelta(years=1)
+        subs = int(time.mktime(period.timetuple()))
+    elif subs == 'НАВСЕГДА':
+        period = start + relativedelta(years=100)
+        subs = int(time.mktime(period.timetuple()))
+    else:
+        period = start + relativedelta(months=1)
+        subs = int(time.mktime(period.timetuple()))
+
+    params = {
+        'telegram_id': int(user_id),
+        'subscription': subs,
+    }
+
+
+    await user_op.upsert_user(params)
 
 
     #### telegram_id = message.from_user.id
     await bot.send_message(
         chat_id=user_id,
-        text='ИЗМЕНИТЬ В БАЗЕ.  ПОЗДРАВЛЯЕМ ОПЛАТА ПРОШЛА'
+        text='ПОЗДРАВЛЯЕМ ОПЛАТА ПРОШЛА УСПЕШНО!'
     )
 
     await bot.send_message(
         chat_id=telegram_id,
-        text=f'ИЗМЕНИТЬ В БАЗЕ. ПОДПИСКА ЮЗЕРА ПОДВЕРЖДЕНА\n\n\n'
+        text=f'ПОДПИСКА ПОЛЬЗОВАТЕЛЯ УСПЕШНО ПОДВЕРЖДЕНА\n\n\n'
              f'user_id={user_id}\n'
              f'подписка = {subs}'
     )
