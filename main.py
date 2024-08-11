@@ -1,6 +1,7 @@
 import asyncio
 import os
 import time
+from datetime import datetime, timedelta
 from multiprocessing import Process, Queue
 from dotenv import load_dotenv
 
@@ -16,9 +17,6 @@ from tg.main_func import start_bot
 load_dotenv()
 
 DATABASE_URL = str(os.getenv('database_url'))
-
-# change for queue
-averaging_channels = ['-1002223524620']
 
 # Create a global queue to store the price data
 price_queue = Queue()
@@ -46,7 +44,7 @@ async def on_start(db_spot_pairs, db_linear_pairs, db_users, db_tg_channels, db_
 
 async def trade_performance(database_url, price_queue):
     signals_op = SignalsOperations(database_url)
-
+    db_tg_channels = TgChannelsOperations(database_url)
     while True:
         try:
             # ####### SIGNAL LOGIC STARTS HERE ########
@@ -63,6 +61,8 @@ async def trade_performance(database_url, price_queue):
                                   signal[next(iter(signal))]['channel_id'])
 
                 print('New signal received', signal_details)
+
+                averaging_channels = await db_tg_channels.get_all_channels()
                 if signal_details[2] in averaging_channels:
                     print('Signal type - averaging')
                 else:
@@ -90,6 +90,16 @@ async def trade_performance(database_url, price_queue):
         except Exception as e:
             print(f"Ошибка в trade_performance: {e}")
             await asyncio.sleep(1)
+
+async def daily_task():
+    while True:
+        now = datetime.utcnow()
+        next_run = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if now > next_run:
+            next_run += timedelta(days=1)
+        sleep_time = (next_run - now).total_seconds()
+        await asyncio.sleep(sleep_time)
+        print(f'Работаю, время равно {datetime.utcnow()}')
 
 def run_on_start_process():
     spot_pairs_op = SpotPairsOperations(DATABASE_URL)
@@ -124,20 +134,26 @@ async def update_prices(price_queue):
 def run_update_prices_process(price_queue):
     asyncio.run(update_prices(price_queue))
 
+def run_daily_task_process():
+    asyncio.run(daily_task())
+
 def main():
     # Создаем и запускаем процессы
     on_start_process = Process(target=run_on_start_process)
     trade_performance_process = Process(target=run_trade_performance_process, args=(price_queue,))
     price_update_process = Process(target=run_update_prices_process, args=(price_queue,))
+    daily_task_process = Process(target=run_daily_task_process)
 
     on_start_process.start()
     trade_performance_process.start()
     price_update_process.start()
+    daily_task_process.start()
 
     # Ожидаем завершения процессов
     on_start_process.join()
     trade_performance_process.join()
     price_update_process.join()
+    daily_task_process.join()
 
 
 if __name__ == "__main__":

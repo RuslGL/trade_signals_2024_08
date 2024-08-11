@@ -129,7 +129,6 @@ class Keyboards:
 
         # Проверка на админские права и добавление кнопки
         if int(params.get('telegram_id')) == int(ADMIN_ID):
-            print('Bingo')
             btn_admin = InlineKeyboardButton(
                 text='Админ меню',
                 callback_data='admin_menu'
@@ -138,6 +137,27 @@ class Keyboards:
 
         return InlineKeyboardMarkup(inline_keyboard=our_menu)
 
+# ADMN MENU
+    async def admin_menu(self,):
+        btn_1 = InlineKeyboardButton(
+            text='Управлять каналами',
+            callback_data='manage_chan',
+        )
+        btn_2 = InlineKeyboardButton(
+            text='Управлять пользователями',
+            callback_data='manage_users'
+        )
+
+        btn_3 = InlineKeyboardButton(
+            text='Главное меню',
+            callback_data='main_menu'
+        )
+
+        our_menu = [[btn_1,],
+                    [btn_2],
+                    [btn_3]]
+
+        return InlineKeyboardMarkup(inline_keyboard=our_menu)
 
 
 # stop trade keyboard

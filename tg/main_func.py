@@ -121,6 +121,29 @@ async def channel_message_handler(message: Message):
 #             )
 
 
+@dp.callback_query(F.data == 'admin_menu')
+async def start_admin_menu(callback_query):
+
+    telegram_id = callback_query.from_user.id
+    print(telegram_id )
+    print(ADMIN_ID)
+    params = await get_user_settings(telegram_id)
+    print(params)
+    if telegram_id != int(ADMIN_ID):
+        await bot.send_message(
+            chat_id=telegram_id,
+            text="Вы не являетесь администратором",
+            reply_markup=await kbd.main_menu(params)
+        )
+        return
+    await bot.send_message(
+        chat_id=telegram_id,
+        text="Админ меню",
+        reply_markup=await kbd.admin_menu()
+    )
+
+
+
 
 
 
@@ -411,8 +434,6 @@ async def handle_subscription(callback_query):
 
 
 
-#@dp.callback_query(F.data.in_(['one_month_conf', 'six_month_conf', 'one_year_conf', 'forewer_conf']))
-
 @dp.callback_query(F.data.startswith('conf_'))
 async def confirm_subscription(callback_query):
     telegram_id = callback_query.from_user.id
@@ -458,8 +479,6 @@ async def confirm_subscription(callback_query):
     )
 
 
-
-#F.text.regexp(r'Hello, .+')
 @dp.callback_query(F.data.startswith('confirmed'))
 async def confirmed_payment(callback_query):
     telegram_id = callback_query.from_user.id
