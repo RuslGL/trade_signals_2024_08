@@ -1,5 +1,13 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+import os
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
+ADMIN_ID = os.getenv('owner_id')
+
 
 # Класс для создания клавиатур
 class Keyboards:
@@ -36,18 +44,25 @@ class Keyboards:
             callback_data='forewer'
         )
 
+        btn_5 = InlineKeyboardButton(
+            text='Главное меню',
+            callback_data='main_menu'
+        )
+
+
         our_menu = [[btn_1, btn_2],
-                    [btn_3, btn_4]]
+                    [btn_3, btn_4],
+                    [btn_5]]
         return InlineKeyboardMarkup(inline_keyboard=our_menu)
 
 
     async def confirm_payment(self, params):
         user_id = params['id']
         subs = 'conf_' + params.get('subs')+'_'+str(user_id)
-        print(subs)
+        # print(subs)
         btn_1 = InlineKeyboardButton(
             text='ОПЛАЧЕНО',
-            callback_data=subs  #+'_conf',
+            callback_data=subs
         )
 
         our_menu = [[btn_1]]
@@ -57,9 +72,9 @@ class Keyboards:
     async def admin_payment_confirmation(self, params):
         subs = params.get('subs')
         user_id = params.get('user_id')
-        #print(params)
+        # print(params)
         call = 'confirmed_' + subs + '_' + str(user_id)
-        print(call)
+        # print(call)
         btn_1 = InlineKeyboardButton(
             text='ПОДТВЕРЖДАЮ',
             callback_data=call
@@ -71,7 +86,7 @@ class Keyboards:
 # MAIN MENU
 # Асинхронная функция для создания главного меню
     async def main_menu(self, params):
-
+        print(params)
         try:
             if params.get('stop_trading'):
                 btn_trade = 'Включить торговлю'
@@ -102,8 +117,25 @@ class Keyboards:
             callback_data='settings_menu'
         )
 
+        btn_5 = InlineKeyboardButton(
+            text='Управлять подпиской',
+            callback_data='manage_subscription'
+        )
+
         our_menu = [[btn_1, btn_2],
-                    [btn_3, btn_4]]
+                    [btn_3, btn_4],
+                    [btn_5]]
+
+
+        # Проверка на админские права и добавление кнопки
+        if int(params.get('telegram_id')) == int(ADMIN_ID):
+            print('Bingo')
+            btn_admin = InlineKeyboardButton(
+                text='Админ меню',
+                callback_data='admin_menu'
+            )
+            our_menu.append([btn_admin])
+
         return InlineKeyboardMarkup(inline_keyboard=our_menu)
 
 

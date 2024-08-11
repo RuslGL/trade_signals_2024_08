@@ -28,6 +28,7 @@ class Users(BaseUsers):
     __tablename__ = 'users'
 
     telegram_id = Column(BigInteger, primary_key=True, nullable=False)
+    username = Column(String, nullable=True)
     is_admin = Column(Boolean, default=False)
     subscription = Column(BigInteger, nullable=True)
     stop_trading = Column(Boolean, default=True)
@@ -40,17 +41,14 @@ class Users(BaseUsers):
     demo_api_key = Column(String, nullable=True)
     demo_secret_key = Column(String, nullable=True)
 
-    testnet_api_key = Column(String, nullable=True)
-    testnet_secret_key = Column(String, nullable=True)
-
     # trade
     trade_type = Column(String, nullable='real') # real/demo
 
     min_trade = Column(Float, nullable=True)
     max_trade = Column(Float, nullable=True)
 
-    spot = Column(Boolean, default=False)
-    futures = Column(Boolean, default=False)
+    spot = Column(Boolean, default=True) # if false trade linear
+    # futures = Column(Boolean, default=False)
 
     tp = Column(Float, nullable=True)
     sl = Column(Float, nullable=True)
@@ -59,7 +57,7 @@ class Users(BaseUsers):
     leverage = Column(Float, nullable=True)
     max_leverage = Column(Float, nullable=True)
 
-    risk_tolerance = Column(Float, nullable=True)
+    risk_tolerance = Column(BigInteger, nullable=True) # stop trade if below
 
     orders_type = Column(String, nullable=True)
     limit_order_slip = Column(Float, nullable=True)
@@ -135,6 +133,28 @@ class UsersOperations:
                     session.add(user)
             await session.commit()
 
+    async def get_active_users(self):
+        async with self.async_session() as session:
+            async with session.begin():
+                # Текущая дата и время
+                current_time = func.now()
+
+                # Запрос для получения всех пользователей
+                query = select(Users).where(Users.subscription > current_time)
+                result = await session.execute(query)
+
+                # Разделение пользователей на два списка
+                spot_users = []
+                non_spot_users = []
+
+                for user in result.scalars().all():
+                    if user.spot:
+                        spot_users.append(user.__dict__)
+                    else:
+                        non_spot_users.append(user.__dict__)
+
+                return spot_users, non_spot_users
+
 
 if __name__ == '__main__':
     async def main():
@@ -149,44 +169,35 @@ if __name__ == '__main__':
                 'is_admin': True,
                 'subscription': 1712265600,  # Example timestamp
                 'stop_trading': True,
-                'main_api_key': 'main_api_key_1',
-                'main_secret_key': 'main_secret_key_1'
+
             },
             {
                 'telegram_id': 2,
                 'subscription': 1712265600,
                 'stop_trading': False,
-                'main_api_key': 'main_api_key_2',
-                'main_secret_key': 'main_secret_key_2'
             },
             {
                 'telegram_id': 3,
                 'subscription': 1712265600,
                 'stop_trading': True,
-                'main_api_key': 'main_api_key_3',
-                'main_secret_key': 'main_secret_key_3'
             },
             {
                 'telegram_id': 4,
                 'subscription': 1712265600,
                 'stop_trading': False,
-                'main_api_key': 'main_api_key_4',
-                'main_secret_key': 'main_secret_key_4'
             },
             {
                 'telegram_id': 5,
                 'subscription': 1712265600,
                 'stop_trading': True,
-                'main_api_key': 'main_api_key_5',
-                'main_secret_key': 'main_secret_key_5'
             }
         ]
 
-        # for user_data in users_data:
-        #     await db_users.upsert_user(user_data)
+        for user_data in users_data:
+            await db_users.upsert_user(user_data)
 
 
-        admin_id = int(os.getenv('owner_id'))
+        # admin_id = int(os.getenv('owner_id'))
 
 
     asyncio.run(main())

@@ -13,6 +13,9 @@ ENDPOINTS = {
 
     # trade endpoints
 
+
+    # account endpoints
+    'wallet-balance': '/v5/account/wallet-balance'
 }
 
 if IF_TEST:
