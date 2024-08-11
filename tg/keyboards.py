@@ -24,7 +24,9 @@ class Keyboards:
         ])
 
 
-#### SUBSCRIPTION PROCESS
+#  ####### УПРАВЛЕНИЕ ПОДПИСКАМИ ########
+#             ############
+#               #####
     async def buy_subscription(self, params):
 
         btn_1 = InlineKeyboardButton(
@@ -83,8 +85,11 @@ class Keyboards:
         our_menu = [[btn_1]]
         return InlineKeyboardMarkup(inline_keyboard=our_menu)
 
-# MAIN MENU
-# Асинхронная функция для создания главного меню
+
+#  ####### ГЛАВНОЕ МЕНЮ ########
+#             ############
+#               #####
+
     async def main_menu(self, params):
         print(params)
         try:
@@ -137,7 +142,11 @@ class Keyboards:
 
         return InlineKeyboardMarkup(inline_keyboard=our_menu)
 
-# ADMN MENU
+
+#  ####### МЕНЮ АДМИНИСТРАТОРА ########
+#             ############
+#               #####
+
     async def admin_menu(self,):
         btn_1 = InlineKeyboardButton(
             text='Управлять каналами',
@@ -159,6 +168,39 @@ class Keyboards:
 
         return InlineKeyboardMarkup(inline_keyboard=our_menu)
 
+# ####### УПРАВЛЕНИЕ КАНАЛАМИ (АДМИН) ########
+#             ############
+#               #####
+
+    async def averaging_channels(self,):
+        btn_1 = InlineKeyboardButton(
+            text='Показать усредняющие каналы',
+            callback_data='show_averaging',
+        )
+        btn_2 = InlineKeyboardButton(
+            text='Добавить усредняющий канал',
+            callback_data='add_averaging'
+        )
+
+        btn_3 = InlineKeyboardButton(
+            text='Главное меню',
+            callback_data='main_menu'
+        )
+
+        our_menu = [[btn_1,],
+                    [btn_2],
+                    [btn_3]]
+
+        return InlineKeyboardMarkup(inline_keyboard=our_menu)
+
+# ####### УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ (АДМИН) ########
+#             ############
+#               #####
+
+
+# ####### ВКЛ ВЫКЛ ТОРГОВЛИ (юзер) ########
+#             ############
+#               #####
 
 # stop trade keyboard
     async def confirm_stop_trade_menu(self, params):
@@ -181,6 +223,9 @@ class Keyboards:
         return InlineKeyboardMarkup(inline_keyboard=our_menu)
 
 
+# ####### ВКЛ ВЫКЛ ДЕМО (юзер) ########
+#             ############
+#               #####
     # stop demo keyboard
     async def confirm_stop_demo_menu(self, params):
             if params.get('trade_type') == 'demo':

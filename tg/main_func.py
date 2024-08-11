@@ -2,13 +2,12 @@ import time
 from datetime import datetime, timezone
 from dateutil.relativedelta import relativedelta
 
-from aiogram import F
+
 
 import os
 import asyncio
 from dotenv import load_dotenv
 
-import re
 
 
 from aiogram import Bot, Dispatcher, types, F
@@ -23,10 +22,11 @@ from code.db.signals import SignalsOperations
 from code.db.users import UsersOperations
 from code.tg.keyboards import Keyboards
 from code.db.subscriptions import SubscriptionsOperations
+from code.db.pnl import PNLManager
+from code.db.tg_channels import TgChannelsOperations
 
 from code.api.account import find_start_budget
 
-from aiogram.types import CallbackQuery, User
 
 load_dotenv()
 
@@ -38,7 +38,7 @@ channel_id = str(os.getenv('channel'))
 DATABASE_URL = os.getenv('database_url')
 db_users_op = UsersOperations(DATABASE_URL)
 
-##### DELETE LATER
+
 ADMIN_ID = os.getenv('owner_id')
 
 dp = Dispatcher()
@@ -64,9 +64,9 @@ async def get_user_settings(user_id):
     return params
 
 
-# ####### CHANNELS ########
-#     ############
-#        #####
+# ####### ПАРСИНГ ТОРГОВЫХ КАНАЛОВ ########
+#            ############
+#               #####
 
 """
 # on adding new bot - correct privacy settings via bot father &
@@ -138,13 +138,170 @@ async def start_admin_menu(callback_query):
         return
     await bot.send_message(
         chat_id=telegram_id,
-        text="Админ меню",
+        text="🟢 Админ меню",
         reply_markup=await kbd.admin_menu()
     )
 
 
+# ####### УПРАВЛЕНИЕ КАНАЛАМИ ########
+#             ############
+#               #####
+
+@dp.callback_query(F.data == 'manage_chan')
+async def manage_channels(callback_query):
+    telegram_id = callback_query.from_user.id
+    params = await get_user_settings(telegram_id)
+    if telegram_id != int(ADMIN_ID):
+        await bot.send_message(
+            chat_id=telegram_id,
+            text="Вы не являетесь администратором",
+            reply_markup=await kbd.main_menu(params)
+        )
+        return
+    await bot.send_message(
+        chat_id=telegram_id,
+        text=(f"🟢 Для добавления каналов с базовыми сигналами просто добавьте телеграм бота в канал и предоставьте ему права администратора."
+              f"\n\n⚡⚡ Дополнительных програмных настроек для считывания сигналов не требуется."
+              f"\n\n🟢 В этом меню вы можете посмотреть список каналов для укрупнения/усреднения позиции и добавить такие каналы"),
+        reply_markup=await kbd.averaging_channels()
+    )
 
 
+@dp.callback_query(F.data == 'add_averaging')
+async def manage_channels(callback_query):
+    telegram_id = callback_query.from_user.id
+    params = await get_user_settings(telegram_id)
+    if telegram_id != int(ADMIN_ID):
+        await bot.send_message(
+            chat_id=telegram_id,
+            text="Вы не являетесь администратором",
+            reply_markup=await kbd.main_menu(params)
+        )
+        return
+    await bot.send_message(
+        chat_id=telegram_id,
+        text="Для добавления нового канала отправьте его id в следующем формате: НОВЫЙ КАНАЛ -1234567789"
+             "\n\n обратите внимание что id канала начинается со знака -",
+    )
+
+
+@dp.message(F.text.lower().startswith('новый канал'))
+async def handle_new_channel_message(message: types.Message):
+    telegram_id = message.from_user.id
+    para = await get_user_settings(telegram_id)
+    if telegram_id != int(ADMIN_ID):
+        await bot.send_message(
+            chat_id=telegram_id,
+            text="Вы не являетесь администратором",
+            reply_markup=await kbd.main_menu(para)
+        )
+        return
+
+
+    channel_id = str(message.text.split()[-1])
+
+    try:
+        await bot.send_message(
+            chat_id=channel_id,
+            text="Данный канал будет добавлен в список каналов для усреднения позиций",
+        )
+        ch_op = TgChannelsOperations(DATABASE_URL)
+        await ch_op.upsert_channel({'telegram_id': str(channel_id)})
+
+        telegram_id = message.from_user.id
+        await bot.send_message(
+            chat_id=telegram_id,
+            text = '🟢 Добавление канала успешно завершено',
+            reply_markup=await kbd.admin_menu()
+        )
+    except Exception as e:
+        print(e)
+        await bot.send_message(
+            chat_id=telegram_id,
+            text="Данный канал не может быть добавлен, возможные причины:"
+                 "\n\n🔴канал уже в списке"
+                 "\n\n🔴предоставленный id недействителен"
+                 "\n\n🔴телеграм бот не добавлен в администраторы канала",
+            reply_markup=await kbd.admin_menu()
+        )
+
+@dp.callback_query(F.data == 'show_averaging')
+async def show_channels(callback_query):
+    telegram_id = callback_query.from_user.id
+    params = await get_user_settings(telegram_id)
+    if telegram_id != int(ADMIN_ID):
+        await bot.send_message(
+            chat_id=telegram_id,
+            text="Вы не являетесь администратором",
+            reply_markup=await kbd.main_menu(params)
+        )
+        return
+
+    ch_op = TgChannelsOperations(DATABASE_URL)
+    text = await ch_op.get_all_channels()
+
+    text = '🟢 Список усредняющих каналов:\n\n' + ' \n\n'.join(text)
+    print(text)
+
+    await bot.send_message(
+        chat_id=telegram_id,
+        text=text,
+        reply_markup=await kbd.admin_menu()
+    )
+
+    await bot.send_message(
+        chat_id=telegram_id,
+        text ="🔴 Для удаления канала отправьте его id в чат в следующем формате: УДАЛИТЬ КАНАЛ -1234567789"
+              "\n\n обратите внимание что id канала начинается со знака -",
+    )
+
+@dp.message(F.text.lower().startswith('удалить канал'))
+async def handle_delete_channel_message(message: types.Message):
+    telegram_id = message.from_user.id
+    para = await get_user_settings(telegram_id)
+    if telegram_id != int(ADMIN_ID):
+        await bot.send_message(
+            chat_id=telegram_id,
+            text="Вы не являетесь администратором",
+            reply_markup=await kbd.main_menu(para)
+        )
+        return
+
+    channel_id = str(message.text.split()[-1])
+
+    try:
+        await bot.send_message(
+            chat_id=channel_id,
+            text="Данный канал будет удален из списка каналов для усреднения позиций",
+        )
+        ch_op = TgChannelsOperations(DATABASE_URL)
+        await ch_op.delete_channel(channel_id)
+
+        telegram_id = message.from_user.id
+        await bot.send_message(
+            chat_id=telegram_id,
+            text='🟢 Удаление канала успешно завершено.'
+                 '\n\n🔴 Не забудьте удалить бота из администраторов канала'
+                 '\n\n иначе он продолжит считывать сигналы, как сигналы на покупку/продажу',
+            reply_markup=await kbd.admin_menu()
+        )
+    except Exception as e:
+        print(e)
+        await bot.send_message(
+            chat_id=telegram_id,
+            text="Данный канал не может быть удален, возможные причины:"
+                 "\n\n🔴канала нет в списке"
+                 "\n\n🔴предоставленный id недействителен"
+                 "\n\n🔴телеграм бот не добавлен в администраторы канала или удален из администраторов",
+            reply_markup=await kbd.admin_menu()
+        )
+
+# ####### УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ ########
+#             ############
+#               #####
+
+
+#########
 
 
 
@@ -152,16 +309,17 @@ async def start_admin_menu(callback_query):
 #     ############
 #        #####
 
-"""
-stop trade functions
-"""
+
+
+# ####### ВКЛ ВЫКЛ ТОРГОВЛИ (юзер) ########
+#             ############
+#               #####
+
 
 @dp.callback_query(F.data == 'stop_trade')
 async def stop_trade_confirmation(message):
     telegram_id = message.from_user.id
     params = await get_user_settings(telegram_id)
-
-
 
     if params.get('stop_trading'):
         text = 'Вы уверены что хотите включить Торговлю?'
@@ -188,63 +346,6 @@ async def stop_trade_confirmation(message):
         text=text,
         reply_markup=await kbd.confirm_stop_trade_menu(params)
         )
-
-@dp.message(F.text.lower().startswith('api key'))
-async def handle_api_key_message(message: types.Message):
-    telegram_id = message.from_user.id
-    params = await get_user_settings(telegram_id)
-    #print(message.text.lower())
-    api_key = str(message.text.split()[-1])
-    user_op = UsersOperations(DATABASE_URL)
-    await user_op.update_user_fields(telegram_id, {'main_api_key': api_key})
-    # сразу сохранитьы
-    await bot.send_message(
-        chat_id=telegram_id,
-        text="API KEY успешно получен и сохранен"
-             "\nОсталось отправить SECRET KEY"
-             "\n\n🔐🔐🔐"
-             "\nОтправьте следующим сообщением SECRET KEY"
-             "\n\n 📌📌📌"
-             "\n<b>Сообщение начните фразой secret key</b>,"
-             "\n🔴🔴🔴"
-             "\n\nПРИМЕР:"
-             "\nsecret key rtyvuA8WFFgjyuHv25rtyvuA8WFFgjyuHv25rtyvuA8WFFgjyuHv25"
-    )
-
-@dp.message(F.text.lower().startswith('secret key'))
-async def handle_api_key_message(message: types.Message):
-    telegram_id = message.from_user.id
-    params = await get_user_settings(telegram_id)
-    secret_key = str(message.text.split()[-1])
-    user_op = UsersOperations(DATABASE_URL)
-    await user_op.update_user_fields(telegram_id, {'main_secret_key': secret_key})
-
-    ##### проверка работоспособности ключей через запрос баланса
-    check = await find_start_budget(telegram_id)
-    print(check)
-    if check == -1:
-        print('invalid keys')
-        await user_op.update_user_fields(telegram_id, {'main_secret_key': None})
-        await bot.send_message(
-            chat_id=telegram_id,
-
-            text="🔴Получены недействительные API ключи"
-                 "\n\n🔴Проверьте, что вы отправили правильные данные, "
-                 "\n\n🔴проверьте настройки ключей,"
-                 "\n\n🔴при необходимости создайте новые ключи."
-                 "\n\n🔐🔐🔐 После этого попробуйте отправить ключи заново",
-            reply_markup=await kbd.main_menu(params)
-        )
-        return
-
-    # сразу сохранить и проверить запросом баланса
-    await bot.send_message(
-        chat_id=telegram_id,
-        text="SECRET KEY успешно получен и сохранен, теперь вы можете активировать режим торговли",
-        reply_markup=await kbd.main_menu(params)
-    )
-
-
 
 
 @dp.callback_query(F.data == 'stop_trade_confirmed')
@@ -280,9 +381,67 @@ async def stop_trade_confirmed(message):
         )
 
 
+# ####### ВНЕСТИ API KEY SECRET KEY ########
+#             ############
+#               #####
+@dp.message(F.text.lower().startswith('api key'))
+async def handle_api_key_message(message: types.Message):
+    telegram_id = message.from_user.id
+    params = await get_user_settings(telegram_id)
+    api_key = str(message.text.split()[-1])
+    user_op = UsersOperations(DATABASE_URL)
+    await user_op.update_user_fields(telegram_id, {'main_api_key': api_key})
+    await bot.send_message(
+        chat_id=telegram_id,
+        text="API KEY успешно получен и сохранен"
+             "\nОсталось отправить SECRET KEY"
+             "\n\n🔐🔐🔐"
+             "\nОтправьте следующим сообщением SECRET KEY"
+             "\n\n 📌📌📌"
+             "\n<b>Сообщение начните фразой secret key</b>,"
+             "\n🔴🔴🔴"
+             "\n\nПРИМЕР:"
+             "\nsecret key rtyvuA8WFFgjyuHv25rtyvuA8WFFgjyuHv25rtyvuA8WFFgjyuHv25"
+    )
 
 
-# stop demo functions
+@dp.message(F.text.lower().startswith('secret key'))
+async def handle_api_key_message(message: types.Message):
+    telegram_id = message.from_user.id
+    params = await get_user_settings(telegram_id)
+    secret_key = str(message.text.split()[-1])
+    user_op = UsersOperations(DATABASE_URL)
+    await user_op.update_user_fields(telegram_id, {'main_secret_key': secret_key})
+
+    ##### проверка работоспособности ключей через запрос баланса
+    check = await find_start_budget(telegram_id)
+    print(check)
+    if check == -1:
+        print('invalid keys')
+        await user_op.update_user_fields(telegram_id, {'main_secret_key': None})
+        await bot.send_message(
+            chat_id=telegram_id,
+
+            text="🔴Получены недействительные API ключи"
+                 "\n\n🔴Проверьте, что вы отправили правильные данные, "
+                 "\n\n🔴проверьте настройки ключей,"
+                 "\n\n🔴при необходимости создайте новые ключи."
+                 "\n\n🔐🔐🔐 После этого попробуйте отправить ключи заново",
+            reply_markup=await kbd.main_menu(params)
+        )
+        return
+
+    await bot.send_message(
+        chat_id=telegram_id,
+        text="SECRET KEY успешно получен и сохранен, теперь вы можете активировать режим торговли",
+        reply_markup=await kbd.main_menu(params)
+    )
+
+
+
+# ####### ВКЛ ВЫКЛ ДЕМО (юзер) ########
+#             ############
+#               #####
 @dp.callback_query(F.data == 'stop_demo')
 async def stop_demo_confirmation(message: types.Message):
     telegram_id = message.from_user.id
@@ -332,9 +491,41 @@ async def stop_demo_confirmed(message):
         )
 
 
-# ##################
+# ####### ЗАПРОС PNL ########
+#        ############
+#          #####
+@dp.callback_query(F.data == 'menu_PNL')
+async def get_pnl(message):
+    telegram_id = message.from_user.id
+    para = await get_user_settings(telegram_id)
+    pnl_op = PNLManager(DATABASE_URL)
+    pnl = await pnl_op.calculate_percentage_difference(user_id=telegram_id)
+    print(pnl)
+    default = ('💰 Недостаточно данных'
+               '\n\n ⚡ Похоже вы недавно начали использование нашей торговой системы'
+               '\n\n ⚡ Для минимального расчета торговый робот должен проработать больше суток')
+    if not pnl:
+        text = default
+    else:
+        text = (f'💰 PNL за период:'
+                f'\n\n🟢 с начала торговли = {pnl.get("initial_vs_latest", 0):.2f}%'
+                f'\n\n🟢 за последний месяц = {pnl.get("month_ago_vs_latest", 0):.2f}%'
+                f'\n\n🟢 за прошедшую неделю = {pnl.get("week_ago_vs_latest", 0):.2f}%'
+                f'\n\n🟢 за прошедшие сутки = {pnl.get("day_ago_vs_latest", 0):.2f}%'
+                f'\n\n ⚡ расчет осуществляется по времени биржи, то есть UTC'
+                f'\n\n ⚡⚡ для расчета принимаются закончившиеся сутки')
 
-# Обработчик команды /start и раздела "main_menu"
+    await bot.send_message(
+        chat_id=telegram_id,
+        text=text,
+        reply_markup=await kbd.main_menu(para)
+        )
+
+
+#  ####### ГЛАВНОЕ МЕНЮ ########
+#             ############
+#               #####
+
 @dp.message(Command("start"))
 # @dp.message()
 @dp.callback_query(F.data == 'main_menu')
@@ -370,8 +561,9 @@ async def start(message: types.Message):
     return
 
 
-
-###### ОБРАБОТЧИКИ ПОДПИСОК
+#  ####### УПРАВЛЕНИЕ ПОДПИСКАМИ ########
+#             ############
+#               #####
 
 @dp.callback_query(F.data.in_(['manage_subscription']))
 async def mange_subscription(callback_query):
@@ -534,10 +726,15 @@ async def confirmed_payment(callback_query):
         chat_id=telegram_id,
         text=f'ПОДПИСКА ПОЛЬЗОВАТЕЛЯ УСПЕШНО ПОДВЕРЖДЕНА\n\n\n'
              f'user_id={user_id}\n'
-             f'подписка = {subs}'
+             f'подписка = {subs}',
+        reply_markup=await kbd.main_menu(params)
+
     )
 
 
+#  ####### НЕИЗВЕСТНЫЕ СООБЩЕНИЯ ########
+#             ############
+#               #####
 @dp.message()
 async def handle_api_key_message(message: types.Message):
     telegram_id = message.from_user.id
@@ -550,8 +747,9 @@ async def handle_api_key_message(message: types.Message):
     )
 
 
-
-# ##############################################
+#  ####### ЗАПУСК БОТА ########
+#             ############
+#               #####
 
 async def start_bot():
 

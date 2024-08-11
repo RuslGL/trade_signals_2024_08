@@ -133,28 +133,36 @@ class UsersOperations:
                     session.add(user)
             await session.commit()
 
-    async def get_active_users(self):
+    async def get_active_users(self) -> List[Dict[str, Optional[str]]]:
         async with self.async_session() as session:
             async with session.begin():
                 # Текущая дата и время
                 current_time = func.now()
 
-                # Запрос для получения всех пользователей
-                query = select(Users).where(Users.subscription > current_time)
+                # Запрос для получения всех пользователей с подпиской больше текущего времени
+                query = select(Users.telegram_id, Users.username).where(
+                    func.to_timestamp(Users.subscription) > current_time)
                 result = await session.execute(query)
+                active_users = result.fetchall()
 
-                # Разделение пользователей на два списка
-                spot_users = []
-                non_spot_users = []
+                # Преобразование результатов в список словарей
+                return [{'telegram_id': user.telegram_id, 'username': user.username or 'N/A'} for user in active_users]
 
-                for user in result.scalars().all():
-                    if user.spot:
-                        spot_users.append(user.__dict__)
-                    else:
-                        non_spot_users.append(user.__dict__)
+    async def get_inactive_users(self) -> List[Dict[str, Optional[str]]]:
+        async with self.async_session() as session:
+            async with session.begin():
+                # Текущая дата и время
+                current_time = func.now()
 
-                return spot_users, non_spot_users
+                # Запрос для получения всех пользователей с подпиской меньше или равной текущему времени
+                query = select(Users.telegram_id, Users.username).where(
+                    func.to_timestamp(Users.subscription) <= current_time)
+                result = await session.execute(query)
+                inactive_users = result.fetchall()
 
+                # Преобразование результатов в список словарей с учетом отсутствующих значений
+                return [{'telegram_id': user.telegram_id, 'username': user.username or 'N/A'} for user in
+                        inactive_users]
 
 if __name__ == '__main__':
     async def main():
@@ -193,11 +201,13 @@ if __name__ == '__main__':
             }
         ]
 
-        for user_data in users_data:
-            await db_users.upsert_user(user_data)
+        #for user_data in users_data:
+        #    await db_users.upsert_user(user_data)
 
 
         # admin_id = int(os.getenv('owner_id'))
 
+        res = await db_users.get_active_users()
+        print(res)
 
     asyncio.run(main())

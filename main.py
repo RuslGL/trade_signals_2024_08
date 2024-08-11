@@ -63,6 +63,7 @@ async def trade_performance(database_url, price_queue):
                 print('New signal received', signal_details)
 
                 averaging_channels = await db_tg_channels.get_all_channels()
+                print(averaging_channels)
                 if signal_details[2] in averaging_channels:
                     print('Signal type - averaging')
                 else:
@@ -154,7 +155,6 @@ def main():
     trade_performance_process.join()
     price_update_process.join()
     daily_task_process.join()
-
 
 if __name__ == "__main__":
     main()
