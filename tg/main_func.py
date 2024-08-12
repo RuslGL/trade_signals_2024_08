@@ -296,10 +296,95 @@ async def handle_delete_channel_message(message: types.Message):
             reply_markup=await kbd.admin_menu()
         )
 
-# ####### УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ ########
-#             ############
-#               #####
+# ####### УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ (ADMIN) ########
+#               ############
+#                   #####
 
+### 'manage_users'
+@dp.callback_query(F.data == 'manage_users')
+async def manage_users(callback_query):
+    telegram_id = callback_query.from_user.id
+    params = await get_user_settings(telegram_id)
+    if telegram_id != int(ADMIN_ID):
+        await bot.send_message(
+            chat_id=telegram_id,
+            text="Вы не являетесь администратором",
+            reply_markup=await kbd.main_menu(params)
+        )
+        return
+
+    await bot.send_message(
+        chat_id=telegram_id,
+        text="🟢 Управление пользователями"
+             "\n\nПоказать пользователей:",
+        reply_markup=await kbd.show_users()
+    )
+
+
+@dp.callback_query(F.data.startswith('users_'))
+async def show_users(callback_query):
+    telegram_id = callback_query.from_user.id
+    db_users = UsersOperations(DATABASE_URL)
+
+    action = callback_query.data
+
+    if  action == 'users_active':
+        text_one = '🟢 Показать активных пользователей:'
+        res = await db_users.get_active_users()
+    else:
+        text_one = '🛑 Показать пользователей без подписки:'
+        res = await db_users.get_inactive_users()
+
+
+    res = '\n\n'.join(
+        f"{index + 1}. {item['username']} {item['telegram_id']}" for index, item in enumerate(res))
+
+    text_two = ("🔴 Для удаления пользователя "
+                "\n🔴 отправьте его id в чат"
+                "\n🔴 в следующем формате:"
+                "\n\nУДАЛИТЬ ПОЛЬЗОВАТЕЛЯ 1234567789")
+
+    await bot.send_message(
+        chat_id=telegram_id,
+        text=f"{text_one}"
+             f"\n\n{res}"
+             f"\n\n{text_two}",
+        reply_markup=await kbd.show_users()
+    )
+
+@dp.message(F.text.lower().startswith('удалить пользователя'))
+async def handle_delete_user(message: types.Message):
+    telegram_id = message.from_user.id
+    para = await get_user_settings(telegram_id)
+    if telegram_id != int(ADMIN_ID):
+        await bot.send_message(
+            chat_id=telegram_id,
+            text="Вы не являетесь администратором",
+            reply_markup=await kbd.main_menu(para)
+        )
+        return
+
+    user_id = int(message.text.split()[-1])
+    db_users = UsersOperations(DATABASE_URL)
+
+    try:
+
+        await db_users.delete_user(user_id)
+        await bot.send_message(
+            chat_id=telegram_id,
+            text=f'🟢 Удаление пользователя {user_id} завершено.',
+            reply_markup=await kbd.admin_menu()
+        )
+    except Exception as e:
+        print(e)
+        await bot.send_message(
+            chat_id=telegram_id,
+            text="⚡⚡⚡"
+                 f"\n\nПользователь {user_id} не может быть удален, возможные причины:"
+                 "\n\n🔴Данного пользователя нет в списке"
+                 "\n\n🔴 Предоставленный id неверен (ошибка ввода)",
+            reply_markup=await kbd.admin_menu()
+        )
 
 #########
 
@@ -430,6 +515,11 @@ async def handle_api_key_message(message: types.Message):
             reply_markup=await kbd.main_menu(params)
         )
         return
+
+    pnl_op = PNLManager(DATABASE_URL)
+    await pnl_op.add_pnl_entry(
+        {'user_id': telegram_id, 'total_budget': str(check)}
+    )
 
     await bot.send_message(
         chat_id=telegram_id,

@@ -9,10 +9,13 @@ from db.pairs import SpotPairsOperations, LinearPairsOperations
 from db.users import UsersOperations
 from db.tg_channels import TgChannelsOperations
 from db.signals import SignalsOperations
+from db.pnl import PNLManager
 
 from api.market import process_spot_linear_settings, get_prices
+from api.account import get_wallet_balance
 
 from tg.main_func import start_bot
+
 
 load_dotenv()
 
@@ -35,6 +38,7 @@ async def on_start(db_spot_pairs, db_linear_pairs, db_users, db_tg_channels, db_
     tasks_res = await asyncio.gather(*tasks)
 
     # Вносим в базу данных все настройки
+    # Периодически обновлять
     tasks = [
         asyncio.create_task(db_spot_pairs.insert_spot_pairs(tasks_res[0][0])),
         asyncio.create_task(db_linear_pairs.insert_linear_pairs(tasks_res[0][1])),
@@ -62,7 +66,12 @@ async def trade_performance(database_url, price_queue):
 
                 print('New signal received', signal_details)
 
+                #################### GATHER REQUESTS #######################
                 averaging_channels = await db_tg_channels.get_all_channels()
+                # USERS SETTINGS
+                # positions
+
+
                 print(averaging_channels)
                 if signal_details[2] in averaging_channels:
                     print('Signal type - averaging')
@@ -86,21 +95,60 @@ async def trade_performance(database_url, price_queue):
             #               ############
             #                   #####
 
+
+
+            #                    #####
+            #                ############
+            # ####### STOP CHECK CURRENT POSITIONS AND TP ########
+
+            # ####### CHECK CURRENT POSITIONS AND TP ########
+            #               ############
+            #                   #####
+
+
             await asyncio.sleep(1)
 
         except Exception as e:
             print(f"Ошибка в trade_performance: {e}")
             await asyncio.sleep(1)
 
+
 async def daily_task():
     while True:
         now = datetime.utcnow()
         next_run = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        if now > next_run:
+
+        if now >= next_run:
             next_run += timedelta(days=1)
+
+        print('Следующее обновление баланса в ', next_run)
+
         sleep_time = (next_run - now).total_seconds()
         await asyncio.sleep(sleep_time)
-        print(f'Работаю, время равно {datetime.utcnow()}')
+
+        pnl_op = PNLManager(DATABASE_URL)
+        users_op = UsersOperations(DATABASE_URL)
+        users = await users_op.get_all_users_data()
+        users = [
+            user['telegram_id']
+            for user in users
+            if user.get('main_api_key') and user.get('main_secret_key')
+        ]
+
+        result = []
+        for user in users:
+            try:
+                balance = await get_wallet_balance(user)
+                total_budget = balance.get('totalWalletBalance')
+                result.append({'user_id': user, 'total_budget': total_budget})
+            except Exception as e:
+                print(f"Error fetching wallet balance for user {user}: {e}")
+
+        for entry in result:
+            await pnl_op.add_pnl_entry(entry)
+        print('Балансы обновлены', now)
+
+
 
 def run_on_start_process():
     spot_pairs_op = SpotPairsOperations(DATABASE_URL)
@@ -155,6 +203,7 @@ def main():
     trade_performance_process.join()
     price_update_process.join()
     daily_task_process.join()
+
 
 if __name__ == "__main__":
     main()

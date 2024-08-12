@@ -14,6 +14,12 @@ load_dotenv()
 BasePNL = declarative_base()
 
 from datetime import datetime, timedelta
+from datetime import datetime, timezone
+
+
+def get_start_of_day_utc():
+    # Устанавливаем время на начало дня (00:00:00) и преобразуем в UTC
+    return datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
 
 class PNL(BasePNL):
     """
@@ -23,7 +29,9 @@ class PNL(BasePNL):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(BigInteger, nullable=False)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0))
+    #created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=get_start_of_day_utc)
+
     total_budget = Column(String, nullable=False)
 
 class PNLManager:
@@ -106,11 +114,11 @@ async def main():
     # Создание записей для тестирования с положительными и отрицательными значениями
     current_time = datetime.utcnow()
     pnl_data = [
-        { 'user_id': 666038149, 'created_at': current_time - timedelta(days=365), 'total_budget': '1000.00'},
-        { 'user_id': 666038149, 'created_at': current_time - timedelta(days=30), 'total_budget': '1100.00'},  # Положительное изменение
-        { 'user_id': 666038149, 'created_at': current_time - timedelta(days=7), 'total_budget': '1050.00'},  # Отрицательное изменение
-        { 'user_id': 666038149, 'created_at': current_time - timedelta(days=1), 'total_budget': '1200.00'},  # Положительное изменение
-        { 'user_id': 666038149, 'created_at': current_time, 'total_budget': '1100.00'},  # Отрицательное изменение
+        { 'user_id': 1, 'created_at': current_time - timedelta(days=365), 'total_budget': '1000.00'},
+        { 'user_id': 1, 'created_at': current_time - timedelta(days=30), 'total_budget': '1100.00'},  # Положительное изменение
+        { 'user_id': 1, 'created_at': current_time - timedelta(days=7), 'total_budget': '1050.00'},  # Отрицательное изменение
+        { 'user_id': 1, 'created_at': current_time - timedelta(days=1), 'total_budget': '1200.00'},  # Положительное изменение
+        { 'user_id': 1, 'created_at': current_time, 'total_budget': '1100.00'},  # Отрицательное изменение
     ]
 
     for entry in pnl_data:

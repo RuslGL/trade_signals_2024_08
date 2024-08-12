@@ -197,6 +197,26 @@ class Keyboards:
 #             ############
 #               #####
 
+    async def show_users(self,):
+        btn_1 = InlineKeyboardButton(
+            text='С ПОДПИСКОЙ',
+            callback_data='users_active',
+        )
+        btn_2 = InlineKeyboardButton(
+            text='БЕЗ ПОДПИСКИ',
+            callback_data='users_inactive'
+        )
+
+        btn_3 = InlineKeyboardButton(
+            text='Админ меню',
+            callback_data='admin_menu'
+        )
+
+        our_menu = [[btn_1, btn_2],
+                    [btn_3]]
+
+        return InlineKeyboardMarkup(inline_keyboard=our_menu)
+
 
 # ####### ВКЛ ВЫКЛ ТОРГОВЛИ (юзер) ########
 #             ############

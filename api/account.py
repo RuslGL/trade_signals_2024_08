@@ -78,6 +78,7 @@ if __name__ == '__main__':
         #res = await get_wallet_balance(telegram_id)
         res = await find_start_budget(telegram_id)
 
+
         print(res)
 
 
