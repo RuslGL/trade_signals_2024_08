@@ -3,7 +3,7 @@ IF_TEST = True  # true - development mode
 
 mainnet_url = 'https://api.bybit.com'
 testnet_url = 'https://api-testnet.bybit.com'
-
+demo_url = 'https://api-demo.bybit.com'
 
 ENDPOINTS = {
     # market endpoints

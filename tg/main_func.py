@@ -25,7 +25,7 @@ from code.db.subscriptions import SubscriptionsOperations
 from code.db.pnl import PNLManager
 from code.db.tg_channels import TgChannelsOperations
 
-from code.api.account import find_start_budget
+from code.api.account import find_usdt_budget
 
 
 load_dotenv()
