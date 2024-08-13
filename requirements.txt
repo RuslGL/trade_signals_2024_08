@@ -5,3 +5,4 @@ asyncpg==0.29.0
 greenlet==3.0.3
 aiogram==3.6.0
 python-dateutil==2.9.0.post0
+pandas==2.2.2

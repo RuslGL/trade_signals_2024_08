@@ -29,6 +29,7 @@ async def process_spot_linear_settings():
     ]
 
     results = await asyncio.gather(*tasks)
+   # print(results[0].get('result').get('list')[0])
 
     # Process spot symbols
     spot_symbols = [
@@ -102,8 +103,8 @@ async def get_prices():
 
 if __name__ == '__main__':
     async def main():
-        # res = await process_spot_linear_settings()
-        res = await get_prices()
+        res = await process_spot_linear_settings()
+        # res = await get_prices()
         print(res[0])
 
 

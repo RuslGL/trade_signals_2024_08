@@ -9,6 +9,10 @@ from typing import List, Dict, Optional
 from sqlalchemy.future import select
 from sqlalchemy import JSON
 
+import pandas as pd
+from typing import Optional
+
+
 from sqlalchemy.exc import NoResultFound
 
 
@@ -111,21 +115,21 @@ class UsersOperations:
                 user = result.scalar_one_or_none()
                 return user.__dict__ if user else {}
 
-    # async def get_all_users_data(self) -> dict:
-    #     async with self.async_session() as session:
-    #         async with session.begin():
-    #             query = select(Users)
-    #             result = await session.execute(query)
-    #             users = result.scalars().all()
-    #             return {user.telegram_id: user.__dict__ for user in users}
 
-    async def get_all_users_data(self) -> List[Dict[str, any]]:
+    async def get_all_users_data(self) -> Optional[pd.DataFrame]:
         async with self.async_session() as session:
             async with session.begin():
                 query = select(Users)
                 result = await session.execute(query)
                 users = result.scalars().all()
-                return [user.__dict__ for user in users]
+
+                if users:
+                    # Преобразование списка объектов в список словарей, затем в DataFrame
+                    users_data = [user.__dict__ for user in users]
+                    df = pd.DataFrame(users_data)
+                    df = df.drop(columns="_sa_instance_state", errors='ignore')  # Удаление ненужного системного столбца
+                    return df
+                return None
 
     async def upsert_user(self, user_data: dict):
         async with self.async_session() as session:
@@ -229,15 +233,17 @@ if __name__ == '__main__':
             }
         ]
 
-        for user_data in users_data:
-            await db_users.upsert_user(user_data)
+        # for user_data in users_data:
+        #    await db_users.upsert_user(user_data)
 
 
         # admin_id = int(os.getenv('owner_id'))
 
-        # res = await db_users.get_active_users()
+        #res = await db_users.get_inactive_users()
+        #print(res)
 
-        #res = await db_users.get_all_users_data()
-        #print(res[0])
+
+        res = await db_users.get_all_users_data()
+        print(res[['trading_pairs', 'telegram_id', 'subscription', 'standart_settings']])
 
     asyncio.run(main())

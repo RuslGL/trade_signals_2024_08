@@ -27,10 +27,8 @@ def gen_signature_get(params, timestamp, api_key, secret_key):
     ).hexdigest()
 
 
-async def get_wallet_balance(telegram_id, coin=None):
+async def get_wallet_balance(telegram_id, url, coin=None):
     user_op = UsersOperations(DATABASE_URL)
-
-    url = st.mainnet_url + st.ENDPOINTS.get('wallet-balance')
 
     settings = await user_op.get_user_data(telegram_id)
 
@@ -52,6 +50,7 @@ async def get_wallet_balance(telegram_id, coin=None):
     if coin:
         params['coin'] = coin
     headers['X-BAPI-SIGN'] = gen_signature_get(params, timestamp, api_key, secret_key)
+
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers, params=params) as response:
@@ -61,8 +60,8 @@ async def get_wallet_balance(telegram_id, coin=None):
         return -1
 
 
-async def find_start_budget(telegram_id):
-    balance = await get_wallet_balance(telegram_id, coin='USDT')
+async def find_start_budget(telegram_id, url):
+    balance = await get_wallet_balance(telegram_id, url, coin='USDT')
     if isinstance(balance, dict):
         return float(balance.get('totalWalletBalance', 0))
     return balance
@@ -73,10 +72,13 @@ if __name__ == '__main__':
     async def main():
         telegram_id = 666038149
         #telegram_id = 7113111974
-        main_url = st.mainnet_url
+        main_url = st.base_url
 
-        #res = await get_wallet_balance(telegram_id)
-        res = await find_start_budget(telegram_id)
+
+
+        url = st.base_url + st.ENDPOINTS.get('wallet-balance')
+        #res = await get_wallet_balance(telegram_id, url)
+        res = await find_start_budget(telegram_id, url)
 
 
         print(res)

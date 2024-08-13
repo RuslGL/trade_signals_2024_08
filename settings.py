@@ -1,4 +1,4 @@
-IF_TEST = True  # true - real_trade, false - development mode
+IF_TEST = True  # true - development mode
 
 
 mainnet_url = 'https://api.bybit.com'
@@ -12,7 +12,9 @@ ENDPOINTS = {
 
 
     # trade endpoints
-
+    'place_order': '/v5/order/create',
+    'cancel_order': '/v5/order/cancel',
+    'open_orders': '/v5/order/realtime',
 
     # account endpoints
     'wallet-balance': '/v5/account/wallet-balance'
