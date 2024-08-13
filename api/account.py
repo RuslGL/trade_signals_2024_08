@@ -62,8 +62,9 @@ async def get_wallet_balance(telegram_id, url, coin=None):
 
 async def find_usdt_budget(telegram_id, url):
     balance = await get_wallet_balance(telegram_id, url, coin='USDT')
+    # print(balance)
     if isinstance(balance, dict):
-        return float(balance.get('totalWalletBalance', 0))
+        return float((balance.get('coin', 0))[0].get('usdValue'))
     return balance
 
 

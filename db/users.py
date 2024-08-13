@@ -53,9 +53,11 @@ class Users(BaseUsers):
 
     # Trade settings
     trade_type = Column(String, default='real')  # real/demo
+    trade_pair_if = Column(Float, default=1)  # % in dirrection and only adter trade
 
     min_trade = Column(Float, default=10)  # Percent from current budget
-    max_trade = Column(Float, default=100)  # Percent from current budget
+                                           # Start position but if budget less - buy less
+    max_trade = Column(Float, default=100) # Percent from current budget
 
     spot = Column(Boolean, default=True)  # If false, trade linear
 
@@ -244,6 +246,6 @@ if __name__ == '__main__':
 
 
         res = await db_users.get_all_users_data()
-        print(res[['trading_pairs', 'telegram_id', 'subscription', 'standart_settings']])
+        # print(res[['trading_pairs', 'telegram_id', 'subscription', 'standart_settings']])
 
     asyncio.run(main())
