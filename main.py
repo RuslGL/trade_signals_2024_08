@@ -109,14 +109,14 @@ async def trade_performance(database_url, price_queue):
                 # Example of using the price data
                 spot_prices, linear_prices = price_queue.get()
                 symbol = coin.upper() + 'USDT'
-                try:
-                    spot_price = spot_prices.get(symbol)
-                except:
-                    pass
-                try:
-                    linear_price = linear_prices.get(symbol)
-                except:
-                    pass
+                # try:
+                #     spot_price = spot_prices.get(symbol)
+                # except:
+                #     pass
+                # try:
+                #     linear_price = linear_prices.get(symbol)
+                # except:
+                #     pass
 
 
                 linear_settings = linear_data.get(coin.upper())
@@ -159,8 +159,8 @@ async def trade_performance(database_url, price_queue):
 
                     budget_results = await asyncio.gather(*tasks)
                     budget_map = {user_task_map[task]: result for task, result in zip(tasks, budget_results)}
-
-                    # Обработка только для рынка spot
+                    task = []
+                    # по торговой стратегии у спота могут быть только лонги
                     spot_price = spot_prices.get(coin.upper() + 'USDT')
                     if signal_details[0] == 'buy' and spot_price:
                         print('Start spot long', spot_price)
@@ -175,7 +175,7 @@ async def trade_performance(database_url, price_queue):
                         # Создаем заказы для пользователей
                         for user_id in users_spot['telegram_id']:
                             trade_pair_if_buy = float(users[users['telegram_id'] == user_id]['trade_pair_if']) /100 + 1
-                            trade_pair_if_slip_buy = float(users[users['telegram_id'] == user_id]['trade_pair_if']) / 100 + 1.001
+                            trade_pair_if_slip_buy = float(users[users['telegram_id'] == user_id]['trade_pair_if']) / 100 + 1.002
 
                             sum_amount = min(float(users[users['telegram_id'] == user_id]['min_trade']),
                                              float(budget_map[user_id]))
@@ -193,7 +193,7 @@ async def trade_performance(database_url, price_queue):
                             }
 
                         # Формируем и отправляем ордера
-                        tasks = []
+                        # tasks = []
                         for user_id, order_data in for_spot_orders.items():
                             if order_data['sum_amount'] > 0:
                                 user_info = users_spot[users_spot['telegram_id'] == user_id].iloc[0]
@@ -215,13 +215,14 @@ async def trade_performance(database_url, price_queue):
                                 tasks.append(task)
 
                         # Выполняем все задачи параллельно и собираем результаты
-                        results = await asyncio.gather(*tasks)
-                        print(results)
+                        #results = await asyncio.gather(*tasks)
+                        #print(results)
 
 
                 ###### linears
-
-                    if signal_details[0] == 'buy' and linear_price:
+                    # по торговой стратегии у фьючей могут быть и лонги и шорты
+                    linear_price = linear_prices.get(coin.upper() + 'USDT')
+                    if linear_price:
                         print('Start linear long', linear_price)
 
                         # Получаем фьючерсные торговые настройки для символа
@@ -238,14 +239,18 @@ async def trade_performance(database_url, price_queue):
                         for user_id in users_linear['telegram_id']:
                             user_set = users[users['telegram_id'] == user_id].iloc[0]
                             print('user_set', user_set)
-                            tp_min_buy = float(user_set['trade_pair_if']) / 100 + 1
+                            if signal_details[0] == 'buy':
+                                tp_min_buy = float(user_set['trade_pair_if']) / 100 + 1
+                                side = 'Buy'
+                                triggerDirection = 1
 
-                            tp_min_slip_buy = float(user_set['trade_pair_if']) / 100 + 1.001
-                            print('budget_results', budget_map[user_id])
+                            if signal_details[0] == 'sell':
+                                tp_min_buy = abs(float(user_set['trade_pair_if']) / 100 - 1)
+                                side = 'Sell'
+                                triggerDirection = 2
                             sum_amount = min(float(user_set['min_trade']), float(budget_map[user_id]))
                             trigger_price_value = round_price(float(linear_price) * tp_min_buy,
                                                               float(linear_price_tick))
-                            price_value = round_price(float(linear_price) * tp_min_slip_buy, float(linear_price_tick))
                             qty_info = calculate_purchase_volume(sum_amount, trigger_price_value, linear_min_volume,
                                                                  linear_qty_tick)
 
@@ -254,13 +259,12 @@ async def trade_performance(database_url, price_queue):
                             for_linear_orders[user_id] = {
                                 'sum_amount': sum_amount,
                                 'triggerPrice': trigger_price_value,
-                                'price': price_value,
+                                #'price': price_value,
                                 'qty_info': qty_info
                             }
-                        print(for_linear_orders)
 
                         # Формируем и отправляем ордера
-                        tasks = []
+                        # tasks = []
                         for user_id, order_data in for_linear_orders.items():
                             if order_data['sum_amount'] > 0:
                                 user_info = users_linear[users_linear['telegram_id'] == user_id].iloc[0]
@@ -275,15 +279,17 @@ async def trade_performance(database_url, price_queue):
                                 # Создаем задачу для выполнения фьючерсного ордера
                                 task = asyncio.create_task(
                                     unuversal_linear_conditional_market_order(
-                                        api_url, api_key, secret_key, symbol, 'Buy',
-                                        order_data['qty_info'], order_data['triggerPrice'], 1
+                                        api_url, api_key, secret_key, symbol, side,
+                                        order_data['qty_info'], order_data['triggerPrice'],
+                                        triggerDirection
                                     )
                                 )
                                 tasks.append(task)
 
-                        # Выполняем все задачи параллельно и собираем результаты
-                        results = await asyncio.gather(*tasks)
-                        print(results)
+                    # Выполняем все задачи параллельно и собираем результаты
+                    # print(tasks)
+                    results = await asyncio.gather(*tasks)
+                    print(results)
 
 
 
@@ -382,6 +388,7 @@ def run_update_prices_process(price_queue):
 
 def run_daily_task_process():
     asyncio.run(daily_task())
+
 
 def main():
     # Создаем и запускаем процессы
