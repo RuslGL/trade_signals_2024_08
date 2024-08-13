@@ -27,13 +27,17 @@ def gen_signature_get(params, timestamp, api_key, secret_key):
     ).hexdigest()
 
 
-async def get_wallet_balance(telegram_id, url, coin=None):
+async def get_wallet_balance(telegram_id, url, demo, coin=None):
     user_op = UsersOperations(DATABASE_URL)
 
     settings = await user_op.get_user_data(telegram_id)
 
-    api_key = settings.get('main_api_key')
-    secret_key = settings.get('main_secret_key')
+    if demo:
+        api_key = settings.get('demo_api_key')
+        secret_key = settings.get('demo_secret_key')
+    else:
+        api_key = settings.get('main_api_key')
+        secret_key = settings.get('main_secret_key')
 
     if not api_key:
         return -1
@@ -60,9 +64,8 @@ async def get_wallet_balance(telegram_id, url, coin=None):
         return -1
 
 
-async def find_usdt_budget(telegram_id, url):
-    balance = await get_wallet_balance(telegram_id, url, coin='USDT')
-    # print(balance)
+async def find_usdt_budget(telegram_id, url, demo=False):
+    balance = await get_wallet_balance(telegram_id, url, demo=demo, coin='USDT')
     if isinstance(balance, dict):
         return float((balance.get('coin', 0))[0].get('usdValue'))
     return balance
@@ -77,9 +80,10 @@ if __name__ == '__main__':
 
 
 
+        #url = st.demo_url + st.ENDPOINTS.get('wallet-balance')
         url = st.base_url + st.ENDPOINTS.get('wallet-balance')
         #res = await get_wallet_balance(telegram_id, url)
-        res = await find_usdt_budget(telegram_id, url)
+        res = await find_usdt_budget(telegram_id, url, demo=False)
 
 
         print(res)

@@ -22,6 +22,11 @@ from api.trade import universal_spot_conditional_market_order, unuversal_linear_
 from tg.main_func import start_bot
 import code.settings as st
 
+import warnings
+
+# Отключение всех предупреждений
+warnings.filterwarnings("ignore")
+
 load_dotenv()
 
 DATABASE_URL = str(os.getenv('database_url'))
@@ -126,185 +131,166 @@ async def trade_performance(database_url, price_queue):
             #                 #####
 
 
+            # проверять список монет, проверять подписку
 
                 if not averaging:
-                    #  #### !!!!! проверить подписку
-
                     print('Start main trade logic')
-                    users_real_market = users[(users['trade_type'] == 'real') & (users['stop_trading'] == False)]
-                    users_demo_market = users[(users['trade_type'] == 'demo')]
-                    #print('real_trade', users_real_market[['username', 'telegram_id']])
 
-                    users_real_market_spot = users_real_market[users_real_market['spot'] == True]
-                    users_real_market_linear = users_real_market[users_real_market['spot'] != True]
+                    # Разделяем пользователей на спотовых и линейных
+                    users_spot = users[users['spot'] == True]
+                    users_linear = users[users['spot'] != True]
 
-                    # получаем доступные бюджеты для всех юзеро real
+                    # Получаем доступные бюджеты для всех пользователей (real и demo)
                     tasks = []
                     user_task_map = {}
 
-                    for user_id in users_real_market['telegram_id'].tolist():
-                        url = trade_url + st.ENDPOINTS.get('wallet-balance')
-                        task = asyncio.create_task(find_usdt_budget(user_id, url))
+                    for index, row in users.iterrows():
+                        user_id = row['telegram_id']
+
+                        if row['trade_type'] == 'demo':
+                            url = demo_url + st.ENDPOINTS.get('wallet-balance')
+                            task = asyncio.create_task(find_usdt_budget(user_id, url, demo=True))
+                        else:
+                            url = trade_url + st.ENDPOINTS.get('wallet-balance')
+                            task = asyncio.create_task(find_usdt_budget(user_id, url))
+
                         tasks.append(task)
                         user_task_map[task] = user_id
 
                     budget_results = await asyncio.gather(*tasks)
-                    budget_results = {user_task_map[task]: result for task, result in zip(tasks, budget_results)}
+                    budget_map = {user_task_map[task]: result for task, result in zip(tasks, budget_results)}
 
-
-                    # now real market only
+                    # Обработка только для рынка spot
                     spot_price = spot_prices.get(coin.upper() + 'USDT')
                     if signal_details[0] == 'buy' and spot_price:
                         print('Start spot long', spot_price)
 
-                        # получаем спотовые торговые настройки для символа
+                        # Получаем спотовые торговые настройки для символа
                         spot_settings = spot_data.get(coin.upper())
-
                         spot_min_volume = spot_settings.get('min_order_qty')
                         spot_qty_tick = spot_settings.get('base_precision')
                         spot_price_tick = spot_settings.get('tick_size')
 
                         for_spot_orders = {}
+                        # Создаем заказы для пользователей
+                        for user_id in users_spot['telegram_id']:
+                            trade_pair_if_buy = float(users[users['telegram_id'] == user_id]['trade_pair_if']) /100 + 1
+                            trade_pair_if_slip_buy = float(users[users['telegram_id'] == user_id]['trade_pair_if']) / 100 + 1.001
 
-                        # ограничить спотом
-                        for user in users_real_market_spot['telegram_id'].tolist():
-                            user_set = users_real_market[users_real_market['telegram_id'] == user].iloc[0]
-                            tp_min_buy = (user_set['trade_pair_if'])/100 + 1
-                            tp_min_slip_buy = (user_set['trade_pair_if']) / 100 + 1.001
-                            # print('tp_min', tp_min_buy, tp_min_slip_buy)
-                            sum_amount = min(float(user_set['min_trade']),
-                                             float(budget_results[user]))
+                            sum_amount = min(float(users[users['telegram_id'] == user_id]['min_trade']),
+                                             float(budget_map[user_id]))
+                            trigger_price = round_price(float(spot_price) * trade_pair_if_buy, float(spot_price_tick))
+                            price = round_price(float(spot_price) * trade_pair_if_slip_buy, float(spot_price_tick))
+                            qty_info_spot = calculate_purchase_volume(sum_amount, spot_price, spot_min_volume,
+                                                                      spot_qty_tick)
 
-
-                            triggerPrice_value = round_price(float(spot_price) * tp_min_buy, float(spot_price_tick))
-                            price_value = round_price(float(spot_price) * tp_min_slip_buy, float(spot_price_tick))
-                            qty_info = calculate_purchase_volume(sum_amount, triggerPrice_value, spot_min_volume, spot_qty_tick)
-                            print(price_value, triggerPrice_value)
-
-                            for_spot_orders[user] = {
+                            # Сохраняем данные для ордеров
+                            for_spot_orders[user_id] = {
                                 'sum_amount': sum_amount,
-                                'triggerPrice': triggerPrice_value,
-                                'price': price_value,
-                                'qty_info': qty_info
+                                'qty_info': qty_info_spot,
+                                'price': price,
+                                'triggerPrice': trigger_price
                             }
 
+                        # Формируем и отправляем ордера
+                        tasks = []
+                        for user_id, order_data in for_spot_orders.items():
+                            if order_data['sum_amount'] > 0:
+                                user_info = users_spot[users_spot['telegram_id'] == user_id].iloc[0]
 
-                        # res сохранить в позиции собрать через гэзер
-                        for key, value in for_spot_orders.items():
-                            # обернуть в таски и гэзер
-                            if value.get('sum_amount') > 0:
-                                user_info = users_real_market[users_real_market['telegram_id'] == key].iloc[0]
-                                qty_prices = for_spot_orders.get(key)
-                                res = await universal_spot_conditional_market_order(order_trade_url,
-                                                                                    user_info['main_api_key'],
-                                                                                    user_info['main_secret_key'],
-                                                                                    symbol, 'Buy',
-                                                                                    qty_prices.get('qty_info'),
-                                                                                    qty_prices.get('price'),
-                                                                                    qty_prices.get('triggerPrice'))
-                                print(res)
+                                # Определяем URL и ключи в зависимости от типа аккаунта
+                                api_url = order_demo_url if user_info['trade_type'] == 'demo' else order_trade_url
+                                api_key = user_info['demo_api_key'] if user_info['trade_type'] == 'demo' else \
+                                user_info['main_api_key']
+                                secret_key = user_info['demo_secret_key'] if user_info['trade_type'] == 'demo' else \
+                                user_info['main_secret_key']
+
+                                # Создаем задачу для выполнения ордера
+                                task = asyncio.create_task(
+                                    universal_spot_conditional_market_order(
+                                        api_url, api_key, secret_key, symbol, 'Buy',
+                                        order_data['qty_info'], order_data['price'], order_data['triggerPrice']
+                                    )
+                                )
+                                tasks.append(task)
+
+                        # Выполняем все задачи параллельно и собираем результаты
+                        results = await asyncio.gather(*tasks)
+                        print(results)
+
+
+                ###### linears
 
                     if signal_details[0] == 'buy' and linear_price:
                         print('Start linear long', linear_price)
 
-
-                        # получаем фьючерсные торговые настройки для символа
+                        # Получаем фьючерсные торговые настройки для символа
                         linear_settings = linear_data.get(coin.upper())
+
 
                         linear_min_volume = linear_settings.get('min_order_qty')
                         linear_qty_tick = linear_settings.get('qty_step')
                         linear_price_tick = linear_settings.get('price_tick_size')
-
+                        print(linear_min_volume, linear_qty_tick, linear_price_tick)
 
                         for_linear_orders = {}
 
-                        # ограничить фьючами
-                        for user in users_real_market_linear['telegram_id'].tolist():
-                            user_set = users_real_market[users_real_market['telegram_id'] == user].iloc[0]
-                            tp_min_buy = (user_set['trade_pair_if'])/100 + 1
-                            tp_min_slip_buy = (user_set['trade_pair_if']) / 100 + 1.001
-                            # print('tp_min', tp_min_buy, tp_min_slip_buy)
-                            sum_amount = min(float(user_set['min_trade']),
-                                             float(budget_results[user]))
+                        for user_id in users_linear['telegram_id']:
+                            user_set = users[users['telegram_id'] == user_id].iloc[0]
+                            print('user_set', user_set)
+                            tp_min_buy = float(user_set['trade_pair_if']) / 100 + 1
 
-                            triggerPrice_value = round_price(float(linear_price) * tp_min_buy, float(linear_price_tick))
-                            price_value = round_price(float(spot_price) * tp_min_slip_buy, float(linear_price_tick))
-                            qty_info = calculate_purchase_volume(sum_amount, triggerPrice_value, linear_min_volume, linear_qty_tick)
-                            print(sum_amount, triggerPrice_value, linear_min_volume, linear_qty_tick)
+                            tp_min_slip_buy = float(user_set['trade_pair_if']) / 100 + 1.001
+                            print('budget_results', budget_map[user_id])
+                            sum_amount = min(float(user_set['min_trade']), float(budget_map[user_id]))
+                            trigger_price_value = round_price(float(linear_price) * tp_min_buy,
+                                                              float(linear_price_tick))
+                            price_value = round_price(float(linear_price) * tp_min_slip_buy, float(linear_price_tick))
+                            qty_info = calculate_purchase_volume(sum_amount, trigger_price_value, linear_min_volume,
+                                                                 linear_qty_tick)
 
-                            for_linear_orders[user] = {
+
+                            # Сохраняем данные для ордеров
+                            for_linear_orders[user_id] = {
                                 'sum_amount': sum_amount,
-                                'triggerPrice': triggerPrice_value,
+                                'triggerPrice': trigger_price_value,
                                 'price': price_value,
                                 'qty_info': qty_info
                             }
+                        print(for_linear_orders)
 
-                        # res сохранить в позиции собрать через гэзер
-                        for key, value in for_linear_orders.items():
-                            # обернуть в таски и гэзер
-                            if value.get('sum_amount') > 0:
-                                user_info = users_real_market[users_real_market['telegram_id'] == key].iloc[0]
-                                qty_prices = for_linear_orders.get(key)
-                                print(qty_prices.get('qty_info'))
-                                res = await unuversal_linear_conditional_market_order(order_trade_url,
-                                                                                    user_info['main_api_key'],
-                                                                                    user_info['main_secret_key'],
-                                                                                    symbol, 'Buy',
-                                                                                    qty_prices.get('qty_info'),
-                                                                                    qty_prices.get('triggerPrice'),
-                                                                                      1,)
-                                print(res)
+                        # Формируем и отправляем ордера
+                        tasks = []
+                        for user_id, order_data in for_linear_orders.items():
+                            if order_data['sum_amount'] > 0:
+                                user_info = users_linear[users_linear['telegram_id'] == user_id].iloc[0]
 
-                    # # res = await unuversal_linear_conditional_market_order(url,
-                    # api_key,
-                    # secret_key,
-                    # #
-                    # symbol,
-                    # side,
-                    # qty,
-                    # #                                           triggerPrice, triggerDirection)
-                    # qty_info_spot = {}
-                    # triggerPrice = {}
-                    # price = {}
-                    #
-                    #
-                    # for user in users_real_market['telegram_id'].tolist():
-                    #     sum_amount = min(float(users[users['telegram_id'] == user]['min_trade']), float(budget_results[user]))
-                    #     triggerPrice = round_price(spot_price * 1.015, spot_price_tick)
-                    #     price = round_price(spot_price * 1.016, spot_price_tick)
-                    #     qty_info_spot[user] = calculate_purchase_volume(sum_amount, spot_price, spot_min_volume, spot_qty_tick)
-                    #
-                    #
-                    #
-                    #
-                    # print(qty_info_spot)
+                                # Определяем URL и ключи в зависимости от типа аккаунта
+                                api_url = order_demo_url if user_info['trade_type'] == 'demo' else order_trade_url
+                                api_key = user_info['demo_api_key'] if user_info['trade_type'] == 'demo' else user_info[
+                                    'main_api_key']
+                                secret_key = user_info['demo_secret_key'] if user_info['trade_type'] == 'demo' else \
+                                user_info['main_secret_key']
 
+                                # Создаем задачу для выполнения фьючерсного ордера
+                                task = asyncio.create_task(
+                                    unuversal_linear_conditional_market_order(
+                                        api_url, api_key, secret_key, symbol, 'Buy',
+                                        order_data['qty_info'], order_data['triggerPrice'], 1
+                                    )
+                                )
+                                tasks.append(task)
 
+                        # Выполняем все задачи параллельно и собираем результаты
+                        results = await asyncio.gather(*tasks)
+                        print(results)
 
-                    #users_real_market_stand_set = users_real_market[(users_real_market['standart_settings'] == True)]['telegram_id'].tolist()
-                    #print('users_real_market_stand_set', users_real_market_stand_set)
-
-
-
-
-                    # рассчитываем объем покупки
-                    # торгуем и сохраняем в позиции
-                    # делаем по аналогии для demo
 
 
 #####################################################
 
 
-                    # print('нестандартную логику обработать отдельно')    # список монет # спот или фьюч
-                    # users_real_market_nonstand_set = users_real_market[(users_real_market['standart_settings'] != True)]['telegram_id'].tolist()
-                    # print('users_real_market_stand_set', users_real_market_nonstand_set)
 
-
-
-
-                    # users_demo = users[(users['trade_type'] == 'demo')]
-                    # #print('demo_trade',users_demo[['username', 'telegram_id']])
-                    # print('input demo logic')
 
             #                    #####
             #                ############
@@ -317,7 +303,7 @@ async def trade_performance(database_url, price_queue):
                 if averaging:
                     print('Start averaging logic')
 
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(1)
 
         except Exception as e:
             print(f"Ошибка в trade_performance: {e}")
