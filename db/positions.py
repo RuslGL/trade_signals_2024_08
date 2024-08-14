@@ -1,5 +1,7 @@
 import os
 import asyncio
+import pandas as pd
+
 from typing import Dict, Optional, List
 
 from dotenv import load_dotenv
@@ -31,9 +33,16 @@ class Positions(BasePositions):
     market = Column(String, nullable=True) # demo / real
     order_type =  Column(String, nullable=True) # spot / linear
     symbol = Column(String, nullable=True)
-    performed = Column(Boolean, default=False)
     depends_on = Column(String, nullable=True)  # bybit_id
     created = Column(DateTime, server_default=func.now())
+    side = Column(String, nullable=False) # Buy / Sell
+
+    # performance fileds
+    orderStatus = Column(Boolean, default=False) # if Filled = true
+    avgPrice = Column(String, nullable=True)   #  execution price
+    cumExecValue = Column(String, nullable=True) # in USDT
+    cumExecQty = Column(String, nullable=True) # '0.683'  QUANTITY in BASECOIN
+    cumExecFee = Column(String, nullable=True) # fee in basecoin
 
 
 class PositionsOperations:
@@ -135,13 +144,33 @@ class PositionsOperations:
                 "bybit_id": position.bybit_id,
                 "owner_id": position.owner_id,
                 "type": position.type,
-                "status": position.status,
+                "tp_opened": position.tp_opened,
+                "market": position.market,
+                "order_type": position.order_type,
                 "symbol": position.symbol,
-                "performed": position.performed,
                 "depends_on": position.depends_on,
-                "created": position.created.isoformat() if position.created else None
+                "created": position.created.isoformat() if position.created else None,
+                "side": position.side,
+                "orderStatus": position.orderStatus,
+                "avgPrice": position.avgPrice,
+                "cumExecValue": position.cumExecValue,
+                "cumExecQty": position.cumExecQty,
+                "cumExecFee": position.cumExecFee,
             }
         return None
+
+    async def get_positions_by_field_value(self, field: str, value) -> pd.DataFrame:
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Positions).where(getattr(Positions, field) == value)
+            )
+            positions = result.scalars().all()
+
+            # Преобразуем список объектов в список словарей
+            positions_dicts = [self._position_to_dict(position) for position in positions]
+
+            # Преобразуем список словарей в DataFrame
+            return pd.DataFrame(positions_dicts)
 
 
 if __name__ == "__main__":

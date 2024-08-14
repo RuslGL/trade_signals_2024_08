@@ -17,7 +17,9 @@ ENDPOINTS = {
     'open_orders': '/v5/order/realtime',
 
     # account endpoints
-    'wallet-balance': '/v5/account/wallet-balance'
+    'wallet-balance': '/v5/account/wallet-balance',
+    'get_orders': '/v5/order/realtime',
+
 }
 
 if IF_TEST:
