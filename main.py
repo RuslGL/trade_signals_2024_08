@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from multiprocessing import Process, Queue
 from dotenv import load_dotenv
 
+import uuid
 
 
 from db.pairs import SpotPairsOperations, LinearPairsOperations
@@ -12,6 +13,7 @@ from db.users import UsersOperations
 from db.tg_channels import TgChannelsOperations
 from db.signals import SignalsOperations
 from db.pnl import PNLManager
+from db.positions import PositionsOperations
 
 from api.market import process_spot_linear_settings, get_prices
 from api.account import get_wallet_balance, find_usdt_budget
@@ -40,7 +42,7 @@ order_demo_url = demo_url + st.ENDPOINTS.get('place_order')
 # Create a global queue to store the price data
 price_queue = Queue()
 
-async def on_start(db_spot_pairs, db_linear_pairs, db_users, db_tg_channels, db_signals):
+async def on_start(db_spot_pairs, db_linear_pairs, db_users, db_tg_channels, db_signals, db_positions):
     # Асинхронно создаем таблицы и получаем все торгуемые пары спот и фьюч с их настройками
     tasks = [
         asyncio.create_task(process_spot_linear_settings()),
@@ -49,6 +51,7 @@ async def on_start(db_spot_pairs, db_linear_pairs, db_users, db_tg_channels, db_
         asyncio.create_task(db_users.create_table()),
         asyncio.create_task(db_tg_channels.create_table()),
         asyncio.create_task(db_signals.create_table()),
+        asyncio.create_task(db_positions.create_table()),
     ]
 
     tasks_res = await asyncio.gather(*tasks)
@@ -68,6 +71,7 @@ async def trade_performance(database_url, price_queue):
     users_op = UsersOperations(database_url)
     spot_set_op = SpotPairsOperations(database_url)
     lin_set_op = LinearPairsOperations(database_url)
+    positions_op = PositionsOperations(database_url)
 
 
     while True:
@@ -78,6 +82,7 @@ async def trade_performance(database_url, price_queue):
 
             signal = await signals_op.get_and_clear_all_signals()
             users = await users_op.get_all_users_data()
+
             # get users settings coin settings etc
 
 
@@ -98,7 +103,7 @@ async def trade_performance(database_url, price_queue):
                 # get positions
 
 
-                print(averaging_channels)
+                # print(averaging_channels)
                 if signal_details[2] in averaging_channels:
                     averaging = True  # averaging trade logic
                     print('Signal type - averaging')
@@ -141,7 +146,7 @@ async def trade_performance(database_url, price_queue):
                     users_linear = users[users['spot'] != True]
 
                     # Получаем доступные бюджеты для всех пользователей (real и demo)
-                    tasks = []
+                    tasks_budget = []
                     user_task_map = {}
 
                     for index, row in users.iterrows():
@@ -154,12 +159,14 @@ async def trade_performance(database_url, price_queue):
                             url = trade_url + st.ENDPOINTS.get('wallet-balance')
                             task = asyncio.create_task(find_usdt_budget(user_id, url))
 
-                        tasks.append(task)
+                        tasks_budget.append(task)
                         user_task_map[task] = user_id
 
-                    budget_results = await asyncio.gather(*tasks)
-                    budget_map = {user_task_map[task]: result for task, result in zip(tasks, budget_results)}
-                    task = []
+                    budget_results = await asyncio.gather(*tasks_budget)
+                    budget_map = {user_task_map[task]: result for task, result in zip(tasks_budget, budget_results)}
+
+                    tasks = []
+
                     # по торговой стратегии у спота могут быть только лонги
                     spot_price = spot_prices.get(coin.upper() + 'USDT')
                     if signal_details[0] == 'buy' and spot_price:
@@ -189,7 +196,8 @@ async def trade_performance(database_url, price_queue):
                                 'sum_amount': sum_amount,
                                 'qty_info': qty_info_spot,
                                 'price': price,
-                                'triggerPrice': trigger_price
+                                'triggerPrice': trigger_price,
+
                             }
 
                         # Формируем и отправляем ордера
@@ -204,12 +212,14 @@ async def trade_performance(database_url, price_queue):
                                 user_info['main_api_key']
                                 secret_key = user_info['demo_secret_key'] if user_info['trade_type'] == 'demo' else \
                                 user_info['main_secret_key']
+                                orderLinkId = f'{user_id}_demo_spot_{uuid.uuid4().hex[:12]}' if user_info['trade_type'] == 'demo' else \
+                                f'{user_id}_real_spot_{uuid.uuid4().hex[:12]}'
 
                                 # Создаем задачу для выполнения ордера
                                 task = asyncio.create_task(
                                     universal_spot_conditional_market_order(
                                         api_url, api_key, secret_key, symbol, 'Buy',
-                                        order_data['qty_info'], order_data['price'], order_data['triggerPrice']
+                                        order_data['qty_info'], order_data['price'], order_data['triggerPrice'], orderLinkId
                                     )
                                 )
                                 tasks.append(task)
@@ -232,13 +242,13 @@ async def trade_performance(database_url, price_queue):
                         linear_min_volume = linear_settings.get('min_order_qty')
                         linear_qty_tick = linear_settings.get('qty_step')
                         linear_price_tick = linear_settings.get('price_tick_size')
-                        print(linear_min_volume, linear_qty_tick, linear_price_tick)
+                        # print(linear_min_volume, linear_qty_tick, linear_price_tick)
 
                         for_linear_orders = {}
 
                         for user_id in users_linear['telegram_id']:
                             user_set = users[users['telegram_id'] == user_id].iloc[0]
-                            print('user_set', user_set)
+                            # print('user_set', user_set)
                             if signal_details[0] == 'buy':
                                 tp_min_buy = float(user_set['trade_pair_if']) / 100 + 1
                                 side = 'Buy'
@@ -276,21 +286,40 @@ async def trade_performance(database_url, price_queue):
                                 secret_key = user_info['demo_secret_key'] if user_info['trade_type'] == 'demo' else \
                                 user_info['main_secret_key']
 
+                                orderLinkId = f'{user_id}_demo_linear_{uuid.uuid4().hex[:12]}' if user_info['trade_type'] == 'demo' else \
+                                f'{user_id}_real_linear_{uuid.uuid4().hex[:12]}'
+
                                 # Создаем задачу для выполнения фьючерсного ордера
                                 task = asyncio.create_task(
                                     unuversal_linear_conditional_market_order(
                                         api_url, api_key, secret_key, symbol, side,
                                         order_data['qty_info'], order_data['triggerPrice'],
-                                        triggerDirection
+                                        triggerDirection, orderLinkId
                                     )
                                 )
                                 tasks.append(task)
 
                     # Выполняем все задачи параллельно и собираем результаты
-                    # print(tasks)
-                    results = await asyncio.gather(*tasks)
-                    print(results)
 
+                    results = await asyncio.gather(*tasks)
+                    #print(results)
+
+                    # сохраняем исполненные в positions
+                    for position in results:
+                        if isinstance(position, dict) and position.get('retMsg') == 'OK':
+                            res = position.get('result')
+                            print(res)
+                            orderLinkId = res.get('orderLinkId')
+                            details = orderLinkId.split('_')
+
+                            pos = {
+                                "bybit_id": orderLinkId,
+                                "owner_id": int(details[0]),
+                                "market": details[1],
+                                "order_type": details[2],
+                                "symbol": symbol
+                       }
+                            await positions_op.upsert_position(pos)
 
 
 #####################################################
@@ -359,8 +388,9 @@ def run_on_start_process():
     users_op = UsersOperations(DATABASE_URL)
     tg_channels_op = TgChannelsOperations(DATABASE_URL)
     signals_op = SignalsOperations(DATABASE_URL)
+    db_positions = PositionsOperations(DATABASE_URL)
 
-    asyncio.run(on_start(spot_pairs_op, linear_pairs_op, users_op, tg_channels_op, signals_op))
+    asyncio.run(on_start(spot_pairs_op, linear_pairs_op, users_op, tg_channels_op, signals_op, db_positions))
 
 def run_trade_performance_process(price_queue):
     while True:
@@ -388,7 +418,6 @@ def run_update_prices_process(price_queue):
 
 def run_daily_task_process():
     asyncio.run(daily_task())
-
 
 def main():
     # Создаем и запускаем процессы

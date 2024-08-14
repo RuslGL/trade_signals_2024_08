@@ -83,18 +83,20 @@ async def post_bybit_signed(url, API_KEY, SECRET_KEY, **kwargs):
 
 async def unuversal_linear_conditional_market_order(url, api_key, secret_key,
                                                     symbol, side, qty,
-                                                    triggerPrice, triggerDirection):
+                                                    triggerPrice, triggerDirection,
+                                                    orderLinkId):
     return await post_bybit_signed(url, api_key, secret_key,
                                    orderType='market', category='linear',
                                    symbol=symbol, side=side,
                                    qty=qty, marketUnit='baseCoin',
                                    triggerPrice=triggerPrice,
-                                   triggerDirection=triggerDirection)
+                                   triggerDirection=triggerDirection,
+                                   orderLinkId=orderLinkId)
 
 
 async def universal_spot_conditional_market_order(url, api_key, secret_key,
                                                   symbol, side, qty, price,
-                                                  triggerPrice):
+                                                  triggerPrice, orderLinkId):
     return await post_bybit_signed(url,api_key, secret_key,
                                    orderType='Limit',
                                    category='spot',
@@ -105,6 +107,7 @@ async def universal_spot_conditional_market_order(url, api_key, secret_key,
                                    triggerPrice=triggerPrice,
                                    marketUnit='baseCoin',
                                    orderFilter='StopOrder',
+                                   orderLinkId=orderLinkId
                                   )
 
 #               #####

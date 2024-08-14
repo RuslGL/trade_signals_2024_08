@@ -26,14 +26,17 @@ class Positions(BasePositions):
 
     bybit_id = Column(String, primary_key=True, nullable=False)  # bybit_id as primary key
     owner_id = Column(BigInteger, nullable=False)
-    type = Column(String, default='main')
-    symbol = Column(String, nullable=False)
+    type = Column(String, default='main') # main / tp / avaraging
+    tp_opened = Column(Boolean, nullable=False, default=False) # if open - stop processing
+    market = Column(String, nullable=True) # demo / real
+    order_type =  Column(String, nullable=True) # spot / linear
+    symbol = Column(String, nullable=True)
     performed = Column(Boolean, default=False)
     depends_on = Column(String, nullable=True)  # bybit_id
     created = Column(DateTime, server_default=func.now())
 
 
-class PositionsManager:
+class PositionsOperations:
     def __init__(self, database_url: str):
         self.engine = create_async_engine(database_url, echo=False)
         self.async_session = sessionmaker(self.engine, class_=AsyncSession, expire_on_commit=False)
@@ -106,12 +109,33 @@ class PositionsManager:
             positions = result.scalars().all()
             return [self._position_to_dict(position) for position in positions]
 
+    async def get_position_with_dependents(self, bybit_id: str) -> Dict[str, List[Dict]]:
+        async with self.async_session() as session:
+            # Получение основной позиции
+            result = await session.execute(
+                select(Positions).where(Positions.bybit_id == bybit_id)
+            )
+            main_position = result.scalars().first()
+
+            # Получение зависимых позиций
+            dependent_positions_result = await session.execute(
+                select(Positions).where(Positions.depends_on == bybit_id)
+            )
+            dependent_positions = dependent_positions_result.scalars().all()
+
+            # Возврат основной позиции и всех зависимых позиций в виде словаря
+            return {
+                "main_position": self._position_to_dict(main_position),
+                "dependent_positions": [self._position_to_dict(dep_pos) for dep_pos in dependent_positions]
+            }
+
     def _position_to_dict(self, position) -> Optional[Dict]:
         if position:
             return {
                 "bybit_id": position.bybit_id,
                 "owner_id": position.owner_id,
                 "type": position.type,
+                "status": position.status,
                 "symbol": position.symbol,
                 "performed": position.performed,
                 "depends_on": position.depends_on,
@@ -122,7 +146,7 @@ class PositionsManager:
 
 if __name__ == "__main__":
     async def main():
-        positions_manager = PositionsManager(DATABASE_URL)
+        positions_manager = PositionsOperations(DATABASE_URL)
 
         # Создание таблицы
         await positions_manager.create_table()
@@ -132,22 +156,24 @@ if __name__ == "__main__":
             "bybit_id": "12345",
             "owner_id": 67892,
             "type": "main",
+            "status": "open",
             "symbol": "BTCUSD",
             "performed": False,
             "depends_on": None,
         }
-        await positions_manager.upsert_position(first_position)
+        #await positions_manager.upsert_position(first_position)
 
         # Добавление второй позиции
         second_position = {
             "bybit_id": "67890",
             "owner_id": 67891,
             "type": "main",
+            "status": "open",
             "symbol": "ETHUSD",
             "performed": False,
             "depends_on": None,
         }
-        await positions_manager.upsert_position(second_position)
+        #await positions_manager.upsert_position(second_position)
 
         # Добавление третьей позиции с depends_on, совпадающим с первой позицией
         third_position = {
@@ -155,19 +181,23 @@ if __name__ == "__main__":
             "owner_id": 67892,
             "type": "dependent",
             "symbol": "XRPUSD",
+            "status": "open",
             "performed": False,
             "depends_on": "12345",  # Связано с первой позицией
         }
 
-        await positions_manager.upsert_position(third_position)
+        #await positions_manager.upsert_position(third_position)
 
         # Получение и вывод всех позиций по owner_id
-        positions = await positions_manager.get_positions_by_owner_id(67892)
-        print("Positions for owner_id 67890:", positions)
+        #positions = await positions_manager.get_positions_by_owner_id(67892)
+        #print("Positions for owner_id 67890:", positions)
 
         # Удаление основной позиции (и зависимой)
         # await positions_manager.delete_position_by_bybit_id("12345")
 
+        # getting position with dependants
+        #res = await positions_manager.get_position_with_dependents('12345')
+        #print(res)
 
     # Запуск асинхронного кода
     asyncio.run(main())
