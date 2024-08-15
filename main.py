@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from multiprocessing import Process, Queue
 from dotenv import load_dotenv
 
+import traceback
 import uuid
 
 
@@ -120,18 +121,6 @@ async def trade_performance(database_url, price_queue):
                 # Example of using the price data
                 spot_prices, linear_prices = price_queue.get()
                 symbol = coin.upper() + 'USDT'
-                # try:
-                #     spot_price = spot_prices.get(symbol)
-                # except:
-                #     pass
-                # try:
-                #     linear_price = linear_prices.get(symbol)
-                # except:
-                #     pass
-
-
-                linear_settings = linear_data.get(coin.upper())
-
 
             #               #####
             #           ############
@@ -285,6 +274,8 @@ async def trade_performance(database_url, price_queue):
 
                         # Формируем и отправляем ордера
                         # tasks = []
+
+
                         for user_id, order_data in for_linear_orders.items():
                             if order_data['sum_amount'] > 0:
                                 user_info = users_linear[users_linear['telegram_id'] == user_id].iloc[0]
@@ -314,7 +305,10 @@ async def trade_performance(database_url, price_queue):
 
                     results = await asyncio.gather(*tasks)
                     # print(results)
-
+                    if signal_details[0] == 'buy':
+                        side = 'Buy'
+                    else:
+                        side = 'Sell'
                     # сохраняем исполненные в positions
                     for position in results:
                         if isinstance(position, dict) and position.get('retMsg') == 'OK':
@@ -340,20 +334,26 @@ async def trade_performance(database_url, price_queue):
                 # ####### STOP MAIN TRADE LOGIC ########
 
 
-            # ####### START AVERAGING TRADE LOGIC ########
-            #               ############
-            #                   #####
+                # ####### START AVERAGING TRADE LOGIC ########
+                #               ############
+                #                   #####
                 if averaging:
                     print('Start averaging logic')
 
+                #                    #####
+                #                ############
+                # ####### START AVERAGING TRADE LOGIC ########
 
 
+            # ####### START CHECK IF PRIMARY ORDER PERFORMED ########
+            #              ############
+            #                 #####
 
-###### проверяем открытие позиции на закрытие
 
             try:
-                open_positions = (await positions_op.get_positions_by_field_value("orderStatus", False))['bybit_id'].to_list()
+                open_positions = (await positions_op.get_positions_by_fields({"orderStatus": False, "type": 'main',}))['bybit_id'].to_list()
             except:
+
                 open_positions = []
 
             positions_filled = []
@@ -374,9 +374,8 @@ async def trade_performance(database_url, price_queue):
                     for order in res_one if order['orderStatus'] == 'Filled'
                 }
 
-                if res_demo:  # Проверяем, что res_demo не пуст
-                    positions_filled.append(res_demo)  # Добавляем копию словаря
-            #print('res_demo', res_demo)
+                if res_demo:
+                    positions_filled.append(res_demo)
 
 
             users_trade = users[users['trade_type'] != 'demo']['telegram_id'].to_list()
@@ -398,28 +397,173 @@ async def trade_performance(database_url, price_queue):
                 if res_real:  # Проверяем, что res_real не пуст
                     positions_filled.append(res_real)  # Добавляем копию словаря
 
+            if positions_filled:
+                for open_position in open_positions:
+                    # Проверяем, есть ли open_position в ключах словаря positions_filled
+                    if open_position in positions_filled[0]:
+                        # Извлекаем данные из positions_filled для данного open_position
+                        position_data = {
+                            "bybit_id": open_position,
+                            "orderStatus": True,
+                            "avgPrice": positions_filled[0][open_position]['avgPrice'],
+                            "cumExecValue": positions_filled[0][open_position]['cumExecValue'],
+                            "cumExecQty": positions_filled[0][open_position]['cumExecQty'],
+                            "cumExecFee": positions_filled[0][open_position]['cumExecFee'],
+                        }
 
-            for open_position in open_positions:
-                # Проверяем, есть ли open_position в ключах словаря positions_filled
-                if open_position in positions_filled[0]:
-                    # Извлекаем данные из positions_filled для данного open_position
-                    position_data = {
-                        "bybit_id": open_position,
-                        "orderStatus": True,
-                        "avgPrice": positions_filled[0][open_position]['avgPrice'],
-                        "cumExecValue": positions_filled[0][open_position]['cumExecValue'],
-                        "cumExecQty": positions_filled[0][open_position]['cumExecQty'],
-                        "cumExecFee": positions_filled[0][open_position]['cumExecFee'],
-                    }
+                        # Обновляем  позицию в базе данных
+                        await positions_op.upsert_position(position_data)
 
-                    # Обновляем или вставляем позицию в базе данных
-                    await positions_op.upsert_position(position_data)
+                #                    #####
+                #                ############
+                # ####### STOP CHECK IF PRIMARY ORDER PERFORMED ########
 
             await asyncio.sleep(1)
 
         except Exception as e:
             print(f"Ошибка в trade_performance: {e}")
+            traceback.print_exc()
             await asyncio.sleep(1)
+
+
+
+async def tp_execution(database_url, price_queue):
+    positions_op = PositionsOperations(database_url)
+    users_op = UsersOperations(database_url)
+    spot_set_op = SpotPairsOperations(database_url)
+    lin_set_op = LinearPairsOperations(database_url)
+    while True:
+        # ####### CHECK FIRST TP CONDITION ########
+        #               ############
+        #                   #####
+        users = await users_op.get_all_users_data()
+        spot_data = await spot_set_op.get_all_spot_pairs_data()
+        linear_data = await lin_set_op.get_all_linear_pairs_data()
+
+        tasks = []
+        try:
+            closed_positions_no_tp = (await positions_op.get_positions_by_fields(
+                {'orderStatus': True, 'tp_opened': False,
+                }))
+
+            if closed_positions_no_tp.empty:
+                # print('No fresh positions closed')
+                await asyncio.sleep(1)
+                continue
+
+            spot_prices, linear_prices = price_queue.get()
+            closed_positions_no_tp = closed_positions_no_tp[['owner_id', 'symbol', 'side',
+                                                             'bybit_id', 'avgPrice', 'cumExecQty',
+                                                             'order_type', 'cumExecQty', 'market']]
+
+            for index, row in closed_positions_no_tp.iterrows():
+                user = users[users['telegram_id'] == row['owner_id']]
+                # print(user['tp_min'].iloc[0])
+
+                if row['order_type'] == 'linear':
+                    current_price = float(linear_prices.get(row['symbol']))
+                else:
+                    current_price = float(spot_prices.get(row['symbol']))
+                prev_price = float(row['avgPrice'])
+
+
+                x = user['tp_min'].iloc[0]
+                print(1, 'Изменение цены', current_price - prev_price, (current_price - prev_price)/prev_price)
+                print(2, row['symbol'], row['bybit_id'])
+
+                if row['side'] == 'Buy':
+                    tp_side = 'Sell'
+                    print(3, 'Ищем сигнал на закрытие лонга')
+
+                    if current_price >= (prev_price * (1 + x / 100)):
+                        print(f"Текущая цена  {current_price} на {x}% или больше превышает цену покупки {prev_price}. Пора ТП на ЛОНГ {row['symbol']}")
+                        qty_info = row['cumExecQty'].iloc[0]
+                        trade_type = row['market']   # demo/real
+                        order_type = row['order_type']  # spot/linear
+                        symbol = row['symbol']
+                        if order_type == 'spot':
+                            spot_settings = spot_data.get(symbol[:-4])
+                            price_tick = spot_settings.get('tick_size')
+                        else:
+                            linear_settings = linear_data.get(symbol[:-4])
+                            price_tick = linear_settings.get('price_tick_size')
+
+                        triggerPrice = current_price * (1 - (float(user['tp_step'].iloc[0])) / 100)
+                        triggerPrice = round_price(triggerPrice, float(price_tick))
+                        price = round_price(triggerPrice * 0.999, float(price_tick)) # for market conditional
+
+
+                        or_type = 'tp'  # tp/main/trailing_lin
+                        orderLinkId = f'{user['telegram_id'].iloc[0]}_{trade_type}_{order_type}_tp_{uuid.uuid4().hex[:9]}' if user['trade_type'].iloc[0] == 'demo' else \
+                                f'{user['telegram_id'].iloc[0]}_{trade_type}_{order_type}_tp_{uuid.uuid4().hex[:9]}'
+                        # print(row)
+                        print(qty_info, tp_side, orderLinkId, or_type, order_type, trade_type, triggerPrice)
+
+                        if row['order_type'] == 'linear':
+                            print('Это фьюч TP на селл, первоначальн ордер был бай, ключи демо или мейн по trade_type == demo')
+                        if row['order_type'] == 'spot':
+                            print('Торгуем спот - первоначально был бай, теперь сел - определяем демо или нет, ключи демо или мейн по trade_type == demo')
+
+
+                            tp_api_url = order_demo_url if user['trade_type'].iloc[0] == 'demo' else order_trade_url
+                            tp_api_key = user['demo_api_key'].iloc[0] if user['trade_type'].iloc[0] == 'demo' else \
+                                user['main_api_key'].iloc[0]
+                            tp_secret_key = user['demo_secret_key'].iloc[0] if user['trade_type'].iloc[0] == 'demo' else \
+                                user['main_secret_key'].iloc[0]
+                            position = await universal_spot_conditional_market_order(tp_api_url , tp_api_key, tp_secret_key,
+                                                  symbol, tp_side, qty_info, price,
+                                                  triggerPrice, orderLinkId)
+                            print('TP performed', position)
+
+
+                            if isinstance(position, dict) and position.get('retMsg') == 'OK':
+                                res = position.get('result')
+                                orderLinkId = res.get('orderLinkId')
+                                details = orderLinkId.split('_')
+                                depends = row['bybit_id']
+                                pos = {
+                                    "bybit_id": orderLinkId,
+                                    "owner_id": int(details[0]),
+                                    "market": details[1],
+                                    "order_type": details[2],
+                                    "symbol": symbol,
+                                    "side": tp_side,
+                                    'type': 'tp',
+                                    'depends_on': depends,
+                                    'triggerPrice': str(triggerPrice),
+                                }
+                                print(row['bybit_id'], 'orderLinkId_toinsert')
+                                pos_change = {
+                                    "bybit_id": row['bybit_id'],
+                                    'tp_opened': True,
+                                }
+                                await positions_op.upsert_position(pos)
+                                await positions_op.upsert_position(pos_change)
+                            # Обновляем  позицию в базе данных
+
+
+                else:
+                    tp_side = 'Buy'
+                    print(3, 'Ищем сигнал на закрытие шорта')
+                    signal = current_price <= (prev_price * (1 - x / 100))
+                    if signal and (row['order_type'] == 'linear'):
+                        print('Трейлинг стоп на фьюч открываем')
+
+
+
+        except Exception as e:
+
+            #                    #####
+            #                ############
+            # ####### STOP CHECK FIRST TP CONDITION ########
+            print(f"Ошибка в процессе tp_execution: {e}")
+            # traceback.print_exc()
+            await asyncio.sleep(1)  # Задержка при ошибке
+
+        await asyncio.sleep(10)
+
+def run_tp_execution_process(price_queue):
+    asyncio.run(tp_execution(DATABASE_URL,price_queue))
 
 
 async def daily_task():
@@ -502,17 +646,20 @@ def main():
     trade_performance_process = Process(target=run_trade_performance_process, args=(price_queue,))
     price_update_process = Process(target=run_update_prices_process, args=(price_queue,))
     daily_task_process = Process(target=run_daily_task_process)
+    tp_execution_process = Process(target=run_tp_execution_process, args=(price_queue,))
 
     on_start_process.start()
     trade_performance_process.start()
     price_update_process.start()
     daily_task_process.start()
+    tp_execution_process.start()
 
     # Ожидаем завершения процессов
     on_start_process.join()
     trade_performance_process.join()
     price_update_process.join()
     daily_task_process.join()
+    tp_execution_process.join()
 
 if __name__ == "__main__":
     main()

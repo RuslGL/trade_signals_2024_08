@@ -133,48 +133,6 @@ if __name__ == '__main__':
 
 
 
-        # trade_type = 'demo'  # 'real'
-        # demo_url = 'https://api-demo.bybit.com'
-        # real_url = 'https://api.bytick.com'
-        #
-        # if trade_type == 'demo':
-        #     main_url = demo_url
-        # else:
-        #     main_url = real_url
-        #
-        # # main_api_key = str(os.getenv('new_api_key'))
-        # # main_secret_key = str(os.getenv('new_secret_key'))
-        #
-        # api_key = str(os.getenv('demo_api_key'))
-        # secret_key = str(os.getenv('demo_secret_key'))
-        # url = main_url + st.ENDPOINTS.get('place_order')
-        # symbol = 'BTCUSDT'
-        # side = 'Buy'
-        # qty = 0.004
-        # triggerPrice = 60000
-        # price = triggerPrice * 0.998
-        # if side == 'Buy':
-        #     triggerDirection = 1
-        # else:
-        #     triggerDirection = 2
-        #
-        # print(url, api_key, secret_key,symbol, side, qty, triggerPrice)
-        #
-        # # works
-        # # res = await universal_spot_conditional_market_order(
-        # #    url, api_key, secret_key,
-        # #    symbol, side, qty, price, triggerPrice)
-        #
-        #
-        # # works
-        # # res = await unuversal_linear_conditional_market_order(url, api_key, secret_key,
-        # #                                           symbol, side, qty,
-        # #                                           triggerPrice, triggerDirection)
-        #
-        # #print(res)
-
-
-
 
     asyncio.run(main())
 

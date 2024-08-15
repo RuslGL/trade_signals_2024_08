@@ -10,6 +10,7 @@ from sqlalchemy import (Column, String, BigInteger, Boolean, DateTime,
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import and_
 
 # Загрузка переменных окружения из .env файла
 load_dotenv()
@@ -28,7 +29,7 @@ class Positions(BasePositions):
 
     bybit_id = Column(String, primary_key=True, nullable=False)  # bybit_id as primary key
     owner_id = Column(BigInteger, nullable=False)
-    type = Column(String, default='main') # main / tp / avaraging
+    type = Column(String, default='main') # main / tp / averaged / trailing_lin
     tp_opened = Column(Boolean, nullable=False, default=False) # if open - stop processing
     market = Column(String, nullable=True) # demo / real
     order_type =  Column(String, nullable=True) # spot / linear
@@ -43,6 +44,7 @@ class Positions(BasePositions):
     cumExecValue = Column(String, nullable=True) # in USDT
     cumExecQty = Column(String, nullable=True) # '0.683'  QUANTITY in BASECOIN
     cumExecFee = Column(String, nullable=True) # fee in basecoin
+    triggerPrice = Column(String, nullable=True)  # adding to TP to trail
 
 
 class PositionsOperations:
@@ -172,6 +174,24 @@ class PositionsOperations:
             # Преобразуем список словарей в DataFrame
             return pd.DataFrame(positions_dicts)
 
+
+    async def get_positions_by_fields(self, filters: dict) -> pd.DataFrame:
+        async with self.async_session() as session:
+            # Создаем список условий для фильтрации
+            conditions = [getattr(Positions, field) == value for field, value in filters.items()]
+
+            # Объединяем условия с помощью оператора AND
+            query = select(Positions).where(and_(*conditions))
+
+            # Выполняем запрос
+            result = await session.execute(query)
+            positions = result.scalars().all()
+
+            # Преобразуем список объектов в список словарей
+            positions_dicts = [self._position_to_dict(position) for position in positions]
+
+            # Преобразуем список словарей в DataFrame
+            return pd.DataFrame(positions_dicts)
 
 if __name__ == "__main__":
     async def main():
