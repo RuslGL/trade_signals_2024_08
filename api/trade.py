@@ -110,6 +110,18 @@ async def universal_spot_conditional_market_order(url, api_key, secret_key,
                                    orderLinkId=orderLinkId
                                   )
 
+async def amend_spot_conditional_market_order(url, api_key, secret_key,
+                                              symbol, price,
+                                              triggerPrice, orderLinkId):
+    return await post_bybit_signed(url, api_key, secret_key,
+                                   orderType='Limit',
+                                   category='spot',
+                                   symbol=symbol,
+                                   price=price,
+                                   triggerPrice=triggerPrice,
+                                   orderLinkId=orderLinkId
+                                   )
+
 #               #####
 #            ############
 # ####### STOP TRADE FUNCTIONS ########
@@ -121,7 +133,6 @@ async def universal_spot_conditional_market_order(url, api_key, secret_key,
 
 
 
-
 #               #####
 #            ############
 # ####### STOP TRADE STRATEGY ########
@@ -129,7 +140,32 @@ async def universal_spot_conditional_market_order(url, api_key, secret_key,
 
 if __name__ == '__main__':
     async def main():
-        pass
+        url = 'https://api-demo.bybit.com/v5/order/create'
+        api_key = str(os.getenv('demo_api_key'))
+        secret_key = str(os.getenv('demo_secret_key'))
+        side = 'Sell'
+        qty = 0.7
+        price = 139
+        triggerPrice = 140
+        orderLinkId = 'test_1'
+
+
+        amendment_url = 'https://api-demo.bybit.com/v5/order/amend'
+        category = 'spot'
+        new_triggerPrice = 139
+        orderLinkId = 'test_1'
+        new_price = 138
+        symbol = 'SOLUSDT'
+
+
+        res = await amend_spot_conditional_market_order(amendment_url, api_key, secret_key,
+                                                      symbol, new_price,
+                                                      new_triggerPrice, orderLinkId)
+        # res = await universal_spot_conditional_market_order(url, api_key, secret_key, symbol, side, qty, price, triggerPrice, orderLinkId)
+
+        print(res)
+
+
 
 
 

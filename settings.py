@@ -15,6 +15,7 @@ ENDPOINTS = {
     'place_order': '/v5/order/create',
     'cancel_order': '/v5/order/cancel',
     'open_orders': '/v5/order/realtime',
+    'amend_order': '/v5/order/amend',
 
     # account endpoints
     'wallet-balance': '/v5/account/wallet-balance',

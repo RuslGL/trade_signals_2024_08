@@ -34,7 +34,7 @@ class Positions(BasePositions):
     market = Column(String, nullable=True) # demo / real
     order_type =  Column(String, nullable=True) # spot / linear
     symbol = Column(String, nullable=True)
-    depends_on = Column(String, nullable=True)  # bybit_id
+    depends_on = Column(String, default='-1')  # bybit_id
     created = Column(DateTime, server_default=func.now())
     side = Column(String, nullable=False) # Buy / Sell
 
@@ -45,6 +45,9 @@ class Positions(BasePositions):
     cumExecQty = Column(String, nullable=True) # '0.683'  QUANTITY in BASECOIN
     cumExecFee = Column(String, nullable=True) # fee in basecoin
     triggerPrice = Column(String, nullable=True)  # adding to TP to trail
+
+    #
+    user_notified = Column(Boolean, default=False) # upon final performance
 
 
 class PositionsOperations:
@@ -158,6 +161,7 @@ class PositionsOperations:
                 "cumExecValue": position.cumExecValue,
                 "cumExecQty": position.cumExecQty,
                 "cumExecFee": position.cumExecFee,
+                "triggerPrice": position.triggerPrice,
             }
         return None
 

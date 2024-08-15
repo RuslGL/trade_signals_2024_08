@@ -20,7 +20,7 @@ from db.positions import PositionsOperations
 from api.market import process_spot_linear_settings, get_prices
 from api.account import get_wallet_balance, find_usdt_budget, get_user_orders
 from api.utils import calculate_purchase_volume, round_price
-from api.trade import universal_spot_conditional_market_order, unuversal_linear_conditional_market_order
+from api.trade import universal_spot_conditional_market_order, unuversal_linear_conditional_market_order, amend_spot_conditional_market_order
 
 
 from tg.main_func import start_bot
@@ -44,7 +44,8 @@ order_demo_url = demo_url + st.ENDPOINTS.get('place_order')
 user_orders_trade_url = trade_url + st.ENDPOINTS.get('get_orders')
 user_orders_demo_url = demo_url + st.ENDPOINTS.get('get_orders')
 
-
+amend_order_trade_url = trade_url + st.ENDPOINTS.get('amend_order')
+amend_order_demo_url = demo_url + st.ENDPOINTS.get('amend_order')
 
 # Create a global queue to store the price data
 price_queue = Queue()
@@ -351,17 +352,19 @@ async def trade_performance(database_url, price_queue):
 
 
             try:
-                open_positions = (await positions_op.get_positions_by_fields({"orderStatus": False, "type": 'main',}))['bybit_id'].to_list()
+                open_positions = (await positions_op.get_positions_by_fields({"orderStatus": False,}))['bybit_id'].to_list()
             except:
 
                 open_positions = []
 
             positions_filled = []
-            res_demo = {}
-            res_real = {}
+            #res_demo = {}
+            #res_real = {}
             users_demo = users[users['trade_type'] == 'demo']['telegram_id'].to_list()
             for user in users_demo:
                 res_one = await get_user_orders(user, user_orders_demo_url, 'spot', 1, demo=True)
+                if not res_one:
+                    res_one = []
                 res_one.extend(await get_user_orders(user, user_orders_demo_url, 'linear', 1, demo=True))
                 res_demo = {
                     order['orderLinkId']: {
@@ -381,6 +384,8 @@ async def trade_performance(database_url, price_queue):
             users_trade = users[users['trade_type'] != 'demo']['telegram_id'].to_list()
             for user in users_trade:
                 res_real = await get_user_orders(user, user_orders_trade_url, 'spot', 2, demo=None)
+                if not res_real:
+                    res_real = []
                 res_real.extend(await get_user_orders(user, user_orders_trade_url, 'linear', 2, demo=None))
 
                 res_real = {
@@ -433,6 +438,8 @@ async def tp_execution(database_url, price_queue):
     spot_set_op = SpotPairsOperations(database_url)
     lin_set_op = LinearPairsOperations(database_url)
     while True:
+
+
         # ####### CHECK FIRST TP CONDITION ########
         #               ############
         #                   #####
@@ -443,7 +450,7 @@ async def tp_execution(database_url, price_queue):
         tasks = []
         try:
             closed_positions_no_tp = (await positions_op.get_positions_by_fields(
-                {'orderStatus': True, 'tp_opened': False,
+                {'orderStatus': True, 'tp_opened': False, 'depends_on': '-1',
                 }))
 
             if closed_positions_no_tp.empty:
@@ -490,7 +497,7 @@ async def tp_execution(database_url, price_queue):
 
                         triggerPrice = current_price * (1 - (float(user['tp_step'].iloc[0])) / 100)
                         triggerPrice = round_price(triggerPrice, float(price_tick))
-                        price = round_price(triggerPrice * 0.999, float(price_tick)) # for market conditional
+                        price = round_price(triggerPrice * 0.998, float(price_tick)) # for market conditional
 
 
                         or_type = 'tp'  # tp/main/trailing_lin
@@ -513,7 +520,7 @@ async def tp_execution(database_url, price_queue):
                             position = await universal_spot_conditional_market_order(tp_api_url , tp_api_key, tp_secret_key,
                                                   symbol, tp_side, qty_info, price,
                                                   triggerPrice, orderLinkId)
-                            print('TP performed', position)
+                            print('TP performed', position, orderLinkId)
 
 
                             if isinstance(position, dict) and position.get('retMsg') == 'OK':
@@ -552,11 +559,81 @@ async def tp_execution(database_url, price_queue):
 
 
         except Exception as e:
-
+            print(f"Ошибка в процессе find initial tp: {e}")
             #                    #####
             #                ############
             # ####### STOP CHECK FIRST TP CONDITION ########
-            print(f"Ошибка в процессе tp_execution: {e}")
+
+            # ####### CHECK TRAIL TP CONDITION ########
+            #               ############
+            #                   #####
+        try:
+            open_tp_orders = (await positions_op.get_positions_by_fields(
+                {'orderStatus': False, 'type': 'tp', 'order_type': 'spot'
+                 }))
+            #print(open_tp_orders)
+
+            if open_tp_orders.empty:
+                print('No open TP to check')
+                await asyncio.sleep(1)
+                continue
+            #
+            spot_prices, linear_prices = price_queue.get()
+            open_tp_orders = open_tp_orders[['owner_id', 'symbol', 'side',
+                                             'bybit_id', 'order_type',
+                                             'triggerPrice', 'market', 'bybit_id']]
+
+
+            for index, row in open_tp_orders.iterrows():
+                user = users[users['telegram_id'] == row['owner_id']]
+
+                current_price = float(spot_prices.get(row['symbol']))
+                prev_price = float(row['triggerPrice'])
+                if current_price > prev_price and row['side']:
+                    print('Поднимаем тейк профит спот на селл вверх')
+                    symbol = row['symbol']
+                    spot_settings = spot_data.get(symbol[:-4])
+                    price_tick = spot_settings.get('tick_size')
+                    new_triggerPrice = current_price * (1 - (float(user['tp_step'].iloc[0])) / 100)
+                    new_triggerPrice = round_price(new_triggerPrice, float(price_tick))
+                    if prev_price >= new_triggerPrice:
+                        continue
+
+                    new_price = round_price(new_triggerPrice * 0.998, float(price_tick))
+                    print('Price current', current_price, 'price_prev', prev_price, 'next_trigger', new_triggerPrice)
+                    prev_orderLinkId = row['bybit_id'].iloc[0]
+                    print(f'Меняем ордер и его дату в базе {prev_orderLinkId}')
+
+                    amend_order_url = amend_order_demo_url if user['trade_type'].iloc[0] == 'demo' else amend_order_trade_url
+
+                    tp_api_key = user['demo_api_key'].iloc[0] if user['trade_type'].iloc[0] == 'demo' else \
+                        user['main_api_key'].iloc[0]
+
+                    tp_secret_key = user['demo_secret_key'].iloc[0] if user['trade_type'].iloc[0] == 'demo' else \
+                        user['main_secret_key'].iloc[0]
+                    res = await amend_spot_conditional_market_order(
+                        amend_order_url, tp_api_key, tp_secret_key,
+                        symbol, new_price, new_triggerPrice, prev_orderLinkId)
+
+                    if isinstance(res, dict) and res.get('retMsg') == 'OK':
+                        pos = {
+                            "bybit_id": prev_orderLinkId,
+                            'triggerPrice': str(new_triggerPrice),
+                        }
+                        await positions_op.upsert_position(pos)
+
+
+
+
+        except Exception as e:
+            print(f"Ошибка в процессе find trailing tp: {e}")
+
+            #                    #####
+            #                ############
+            # ####### STOP CHECK TRAIL TP CONDITION ########
+
+
+
             # traceback.print_exc()
             await asyncio.sleep(1)  # Задержка при ошибке
 
