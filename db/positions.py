@@ -29,7 +29,7 @@ class Positions(BasePositions):
 
     bybit_id = Column(String, primary_key=True, nullable=False)  # bybit_id as primary key
     owner_id = Column(BigInteger, nullable=False)
-    type = Column(String, default='main') # main / tp / averaged / trailing_lin
+    type = Column(String, default='main') # main / tp / averaging / trailing_lin
     tp_opened = Column(Boolean, nullable=False, default=False) # if open - stop processing
     market = Column(String, nullable=True) # demo / real
     order_type =  Column(String, nullable=True) # spot / linear

@@ -50,6 +50,7 @@ amend_order_demo_url = demo_url + st.ENDPOINTS.get('amend_order')
 # Create a global queue to store the price data
 price_queue = Queue()
 
+
 async def on_start(db_spot_pairs, db_linear_pairs, db_users, db_tg_channels, db_signals, db_positions):
     # Асинхронно создаем таблицы и получаем все торгуемые пары спот и фьюч с их настройками
     tasks = [
@@ -90,6 +91,7 @@ async def trade_performance(database_url, price_queue):
 
             signal = await signals_op.get_and_clear_all_signals()
             users = await users_op.get_all_users_data()
+            # users = await users_op.get_all_users_data()
 
             # get users settings coin settings etc
 
@@ -107,6 +109,7 @@ async def trade_performance(database_url, price_queue):
                 averaging_channels = await db_tg_channels.get_all_channels()
                 spot_data = await spot_set_op.get_all_spot_pairs_data()
                 linear_data = await lin_set_op.get_all_linear_pairs_data()
+
                 # get USERS SETTINGS
 
 
@@ -340,6 +343,80 @@ async def trade_performance(database_url, price_queue):
                 #                   #####
                 if averaging:
                     print('Start averaging logic')
+                    symbol = coin.upper() + 'USDT'
+                    # получаем открытые (выкупленные) позиции у которых еще не тригернулся ТП и у которых совпадает символ
+                    try:
+                        closed_positions_no_tp = (await positions_op.get_positions_by_fields(
+                            {'orderStatus': True, 'tp_opened': False, 'depends_on': '-1', 'symbol': symbol
+                             }))
+
+                        if closed_positions_no_tp.empty:
+                            print('Нет открытых позиций для укрупнения')
+                            continue
+
+                        if signal_details[0] == 'buy':
+                            side = 'Buy'
+                        else:
+                            side = 'Sell'
+
+                        spot_price = spot_prices.get(coin.upper() + 'USDT')
+                        linear_price = linear_prices.get(coin.upper() + 'USDT')
+
+
+                        closed_positions_no_tp = closed_positions_no_tp[['owner_id', 'symbol', 'side',
+                                                                         'bybit_id', 'avgPrice', 'cumExecQty',
+                                                                         'order_type', 'cumExecQty', 'market']]
+
+
+                        print('Проверяем условия усреднения')
+                        # print(closed_positions_no_tp)
+
+                        #from position "avgPrice"  "cumExecQty" owner_id
+
+                        for index, row in closed_positions_no_tp.iterrows():
+                            user = users[users['telegram_id'] == row['owner_id']]
+                            averaging = user['averaging'].iloc[0]
+                            # print(averaging)
+                            if averaging:
+                                averaging_step = float(user['averaging_step'].iloc[0])
+                                averaging_size = float(user['averaging_size'].iloc[0])
+                                # print(averaging_step, averaging_size)
+                                prev_order_type = row['order_type']
+                                # print('prev_order_type', prev_order_type)
+                                prev_price = float(row['avgPrice'])
+                                prev_volume = float(row['cumExecQty'].iloc[0])
+                                # print('prev_price', prev_price , 'prev_volume', prev_volume)
+                                if row['order_type'] == 'spot':
+                                    print(row['order_type'])
+                                    current_price = float(spot_price)
+                                else:
+                                    current_price = float(linear_price)
+
+                                extra_volume = abs((prev_volume * averaging_size) - prev_volume)
+
+                                if side == 'Buy':
+                                    if prev_price < current_price:
+                                        print('No averaging for buy')
+                                    else:
+                                        print('lets check averaging details for buy')
+                                        per_cent = abs(current_price - prev_price) / prev_price * 100
+                                        if per_cent >= averaging_step:
+                                            print(f'lets buy extra {extra_volume}')
+
+                                if side == 'Sell':
+                                    if prev_price > current_price:
+                                        print('No averaging for sell - linears only')
+                                    else:
+                                        print('lets check averaging details for short - linears only')
+                                        per_cent = abs(current_price - prev_price) / prev_price * 100
+                                        if per_cent >= averaging_step:
+                                            print(f'lets sell extra {extra_volume}')
+
+
+
+                    except Exception as e:
+                        print(f"Ошибка в блоке START AVERAGING TRADE LOGIC: {e}")
+                        traceback.print_exc()
 
                 #                    #####
                 #                ############
@@ -358,6 +435,7 @@ async def trade_performance(database_url, price_queue):
                 open_positions = []
 
             positions_filled = []
+            averaging_positions_filled = []
             #res_demo = {}
             #res_real = {}
             users_demo = users[users['trade_type'] == 'demo']['telegram_id'].to_list()
@@ -372,7 +450,8 @@ async def trade_performance(database_url, price_queue):
                         'avgPrice': order['avgPrice'],
                         'cumExecValue': order['cumExecValue'],
                         'cumExecQty': order['cumExecQty'],
-                        'cumExecFee': order['cumExecFee']
+                        'cumExecFee': order['cumExecFee'],
+                        'type': order['cumExecFee'],
                     }
                     for order in res_one if order['orderStatus'] == 'Filled'
                 }
@@ -394,7 +473,8 @@ async def trade_performance(database_url, price_queue):
                         'avgPrice': order['avgPrice'],
                         'cumExecValue': order['cumExecValue'],
                         'cumExecQty': order['cumExecQty'],
-                        'cumExecFee': order['cumExecFee']
+                        'cumExecFee': order['cumExecFee'],
+                        'type': order['cumExecFee'],
                     }
                     for order in res_real if order['orderStatus'] == 'Filled'
                 }
@@ -415,9 +495,14 @@ async def trade_performance(database_url, price_queue):
                             "cumExecQty": positions_filled[0][open_position]['cumExecQty'],
                             "cumExecFee": positions_filled[0][open_position]['cumExecFee'],
                         }
+                        if positions_filled[0][open_position]['type'] == 'averaging':
+                            averaging_positions_filled.append(position_data)
+                            print('Закрылась позиция averaging - рассчитать и изменить основной ордер, позицию удалить')
+                            print(open_position)
+                        else:
+                            # Обновляем  позицию в базе данных если не averaging
+                            await positions_op.upsert_position(position_data)
 
-                        # Обновляем  позицию в базе данных
-                        await positions_op.upsert_position(position_data)
 
                 #                    #####
                 #                ############
@@ -475,12 +560,12 @@ async def tp_execution(database_url, price_queue):
 
 
                 x = user['tp_min'].iloc[0]
-                print(1, 'Изменение цены', current_price - prev_price, (current_price - prev_price)/prev_price)
-                print(2, row['symbol'], row['bybit_id'])
+                # print(1, 'Изменение цены', current_price - prev_price, (current_price - prev_price)/prev_price)
+                # print(2, row['symbol'], row['bybit_id'])
 
                 if row['side'] == 'Buy':
                     tp_side = 'Sell'
-                    print(3, 'Ищем сигнал на закрытие лонга')
+                    # print(3, 'Ищем сигнал на закрытие лонга')
 
                     if current_price >= (prev_price * (1 + x / 100)):
                         print(f"Текущая цена  {current_price} на {x}% или больше превышает цену покупки {prev_price}. Пора ТП на ЛОНГ {row['symbol']}")
@@ -551,7 +636,7 @@ async def tp_execution(database_url, price_queue):
 
                 else:
                     tp_side = 'Buy'
-                    print(3, 'Ищем сигнал на закрытие шорта')
+                    # print(3, 'Ищем сигнал на закрытие шорта')
                     signal = current_price <= (prev_price * (1 - x / 100))
                     if signal and (row['order_type'] == 'linear'):
                         print('Трейлинг стоп на фьюч открываем')
@@ -574,7 +659,7 @@ async def tp_execution(database_url, price_queue):
             #print(open_tp_orders)
 
             if open_tp_orders.empty:
-                print('No open TP to check')
+                # print('No open TP to check')
                 await asyncio.sleep(1)
                 continue
             #
