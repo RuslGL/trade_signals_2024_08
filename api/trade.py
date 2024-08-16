@@ -122,6 +122,18 @@ async def amend_spot_conditional_market_order(url, api_key, secret_key,
                                    orderLinkId=orderLinkId
                                    )
 
+
+async def universal_market_order(url, api_key, secret_key, category, symbol, side, qty, orderLinkId):
+    return await post_bybit_signed(url, api_key, secret_key,
+                                   orderType='Market',
+                                   category=category,
+                                   symbol=symbol,
+                                   side=side,
+                                   qty=qty,
+                                   marketUnit='baseCoin',
+                                   orderLinkId=orderLinkId
+                                   )
+
 #               #####
 #            ############
 # ####### STOP TRADE FUNCTIONS ########
@@ -140,28 +152,41 @@ async def amend_spot_conditional_market_order(url, api_key, secret_key,
 
 if __name__ == '__main__':
     async def main():
-        url = 'https://api-demo.bybit.com/v5/order/create'
-        api_key = str(os.getenv('demo_api_key'))
-        secret_key = str(os.getenv('demo_secret_key'))
-        side = 'Sell'
-        qty = 0.7
-        price = 139
-        triggerPrice = 140
-        orderLinkId = 'test_1'
+        # url = 'https://api-demo.bybit.com/v5/order/create'
+        # api_key = str(os.getenv('demo_api_key'))
+        # secret_key = str(os.getenv('demo_secret_key'))
+        # side = 'Sell'
+        # qty = 0.7
+        # price = 139
+        # triggerPrice = 140
+        # orderLinkId = 'test_1'
+        #
+        #
+        # amendment_url = 'https://api-demo.bybit.com/v5/order/amend'
+        # category = 'linear'
+        # category = 'spot'
+        # new_triggerPrice = 139
+        # orderLinkId = 'test_1'
+        # new_price = 138
+        # symbol = 'SOLUSDT'
 
 
-        amendment_url = 'https://api-demo.bybit.com/v5/order/amend'
-        category = 'spot'
-        new_triggerPrice = 139
-        orderLinkId = 'test_1'
-        new_price = 138
-        symbol = 'SOLUSDT'
 
 
-        res = await amend_spot_conditional_market_order(amendment_url, api_key, secret_key,
-                                                      symbol, new_price,
-                                                      new_triggerPrice, orderLinkId)
+        # res = await amend_spot_conditional_market_order(amendment_url, api_key, secret_key, symbol, new_price, new_triggerPrice, orderLinkId)
         # res = await universal_spot_conditional_market_order(url, api_key, secret_key, symbol, side, qty, price, triggerPrice, orderLinkId)
+
+        # api_key = str(os.getenv('demo_api_key'))
+        # secret_key = str(os.getenv('demo_secret_key'))
+        # url = 'https://api-demo.bybit.com/v5/order/create'
+        # symbol = 'SOLUSDT'
+        # #side = 'Sell'
+        # side = "Buy"
+        # category = 'linear'
+        # orderLinkId = 'test_market_5'
+        # qty = 0.8
+        # res = await universal_market_order(url, api_key, secret_key, category, symbol, side, qty, orderLinkId)
+
 
         print(res)
 

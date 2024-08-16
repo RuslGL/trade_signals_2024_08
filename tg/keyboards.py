@@ -127,9 +127,15 @@ class Keyboards:
             callback_data='manage_subscription'
         )
 
+        btn_6 = InlineKeyboardButton(
+            text='Настройки торговли',
+            callback_data='settings'
+        )
+
         our_menu = [[btn_1, btn_2],
                     [btn_3, btn_4],
-                    [btn_5]]
+                    [btn_5],
+                    [btn_6]]
 
 
         # Проверка на админские права и добавление кнопки
@@ -265,3 +271,10 @@ class Keyboards:
                 [btn_1, btn_2],
             ]
             return InlineKeyboardMarkup(inline_keyboard=our_menu)
+
+
+# ####### НАСТРОЙКИ ТОРГОВЛИ ########
+#             ############
+#               #####
+
+

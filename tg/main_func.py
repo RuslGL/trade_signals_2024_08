@@ -25,7 +25,7 @@ from code.db.subscriptions import SubscriptionsOperations
 from code.db.pnl import PNLManager
 from code.db.tg_channels import TgChannelsOperations
 
-from code.api.account import find_usdt_budget
+from code.api.account import find_usdt_budget, get_wallet_balance
 
 
 load_dotenv()
@@ -110,15 +110,14 @@ async def channel_message_handler(message: Message):
 #        #####
 
 
-# # Стартовая функция, отправляет сообщение администратору при запуске бота
-# async def on_startup():
-#     for admin in admin_id:
-#         await bot.send_message(
-#             chat_id=admin,
-#             text='<b>Торговый бот был запущен!</b>',
-#             # reply_markup=kbd.single_btn_back_to_main_menu
-#             reply_markup=await kbd.admin_menu()
-#             )
+# Стартовая функция, отправляет сообщение администратору при запуске бота
+async def on_startup():
+    await bot.send_message(
+        chat_id=ADMIN_ID,
+        text='<b>Торговый бот был запущен!</b>',
+        # reply_markup=kbd.single_btn_back_to_main_menu
+        reply_markup=await kbd.admin_menu()
+        )
 
 
 @dp.callback_query(F.data == 'admin_menu')
@@ -437,7 +436,7 @@ async def stop_trade_confirmation(message):
 async def stop_trade_confirmed(message):
     telegram_id = message.from_user.id
     para = await get_user_settings(telegram_id)
-    status =  para.get('stop_trading')
+    status = para.get('stop_trading')
     # print(status)
 
     if not status:
@@ -448,16 +447,20 @@ async def stop_trade_confirmed(message):
         # print('Otkluchaem torgovlu')
 
     else:
-        text = 'Торговля успешно включена\n\n🟢 Управление торговлей'
+        text = ('🟢 Торговля успешно включена'
+                '\n\n🔴 Не забудьте выключить демо-режим, если он включен'
+                '\n\n🟢 Управление торговлей')
         fields = {
             'stop_trading': False
         }
         # print('Vkluchaem torgovlu')
     try:
         await db_users_op.update_user_fields(telegram_id, fields)
+#### здесь выдаем параметры на подверждение
     except Exception as e:
         text = 'Сейчас невозможно изменить параметры, попробуйте позднее'
 
+#### здесь выдаем параметры на подверждение
     para = await get_user_settings(telegram_id)
     await bot.send_message(
         chat_id=telegram_id,
@@ -466,9 +469,11 @@ async def stop_trade_confirmed(message):
         )
 
 
-# ####### ВНЕСТИ API KEY SECRET KEY ########
+# ####### ВНЕСТИ API KEY SECRET KEY MAIN########
 #             ############
 #               #####
+
+# main
 @dp.message(F.text.lower().startswith('api key'))
 async def handle_api_key_message(message: types.Message):
     telegram_id = message.from_user.id
@@ -489,7 +494,7 @@ async def handle_api_key_message(message: types.Message):
              "\nsecret key rtyvuA8WFFgjyuHv25rtyvuA8WFFgjyuHv25rtyvuA8WFFgjyuHv25"
     )
 
-
+# main
 @dp.message(F.text.lower().startswith('secret key'))
 async def handle_api_key_message(message: types.Message):
     telegram_id = message.from_user.id
@@ -498,9 +503,9 @@ async def handle_api_key_message(message: types.Message):
     user_op = UsersOperations(DATABASE_URL)
     await user_op.update_user_fields(telegram_id, {'main_secret_key': secret_key})
 
+
     ##### проверка работоспособности ключей через запрос баланса
-    check = await find_start_budget(telegram_id)
-    print(check)
+    check = await get_wallet_balance(telegram_id)
     if check == -1:
         print('invalid keys')
         await user_op.update_user_fields(telegram_id, {'main_secret_key': None})
@@ -532,6 +537,7 @@ async def handle_api_key_message(message: types.Message):
 # ####### ВКЛ ВЫКЛ ДЕМО (юзер) ########
 #             ############
 #               #####
+
 @dp.callback_query(F.data == 'stop_demo')
 async def stop_demo_confirmation(message: types.Message):
     telegram_id = message.from_user.id
@@ -540,7 +546,23 @@ async def stop_demo_confirmation(message: types.Message):
     if params.get('trade_type') == 'demo':
         text = 'Вы уверены что хотите отключить демо-режим и начать Торговлю на реальном рынке?'
     else:
-        text = 'Вы уверены что хотите включить демо-режим?'
+        text = 'Вы уверены что хотите включить демо-режим? '
+        if not params.get('demo_secret_key') or not params.get('demo_api_key'):
+            await bot.send_message(
+                chat_id=telegram_id,
+                text="🛑🛑🛑"
+                     "\nОтсутствуют действующие API ключи для демо-торговли."
+                     "\n\n🔐🔐🔐"
+                     "\nОтправьте следующим сообщением Аpi key для демо-аккаунта"
+                     "\n\n 📌📌📌"
+                     "\n<b>Сообщение начните фразой \ndemo api key</b>,"
+                     "\n"
+                     "\n\nПРИМЕР:"
+                     "\ndemo api key rtyvuA8WFFgjyuHv25"
+
+            )
+            return
+
 
     await bot.send_message(
         chat_id=telegram_id,
@@ -548,6 +570,61 @@ async def stop_demo_confirmation(message: types.Message):
 
         reply_markup=await kbd.confirm_stop_demo_menu(params)
         )
+
+@dp.message(F.text.lower().startswith('demo api key'))
+async def handle_api_key_message(message: types.Message):
+    telegram_id = message.from_user.id
+    # params = await get_user_settings(telegram_id)
+    api_key = str(message.text.split()[-1])
+    user_op = UsersOperations(DATABASE_URL)
+    await user_op.update_user_fields(telegram_id, {'demo_api_key': api_key})
+    await bot.send_message(
+        chat_id=telegram_id,
+        text="API KEY для демо акканут успешно получен и сохранен"
+             "\nОсталось отправить SECRET KEY"
+             "\n\n🔐🔐🔐"
+             "\nОтправьте следующим сообщением SECRET KEY для демо акканута"
+             "\n\n 📌📌📌"
+             "\n<b>Сообщение начните фразой \ndemo secret key</b>"
+             "\n"
+             "\n\nПРИМЕР:"
+             "\ndemo secret key rtyvuA8WFFgjyuHv25rtyvuA8WFFgjyuHv25rtyvuA8WFFgjyuHv25"
+    )
+
+@dp.message(F.text.lower().startswith('demo secret key'))
+async def handle_api_key_message(message: types.Message):
+    telegram_id = message.from_user.id
+    secret_key = str(message.text.split()[-1])
+    user_op = UsersOperations(DATABASE_URL)
+    params = await get_user_settings(telegram_id)
+    await user_op.update_user_fields(telegram_id, {'demo_secret_key': secret_key})
+
+
+    ##### проверка работоспособности ключей через запрос баланса
+    check = await get_wallet_balance(telegram_id, demo=True)
+    if check == -1:
+        print('invalid keys')
+        await user_op.update_user_fields(telegram_id, {'demo_secret_key': None})
+        await bot.send_message(
+            chat_id=telegram_id,
+
+            text="🔴Получены недействительные API ключи для демо аккаунта"
+                 "\n\n🔴Проверьте, что вы отправили правильные данные, "
+                 "\n\n🔴проверьте настройки ключей,"
+                 "\n\n🔴при необходимости создайте новые ключи."
+                 "\n\n🔐🔐🔐 После этого попробуйте отправить ключи заново",
+            reply_markup=await kbd.main_menu(params)
+        )
+        return
+
+    await user_op.update_user_fields(telegram_id, {'trade_type': 'demo'})
+    params = await get_user_settings(telegram_id)
+    await bot.send_message(
+        chat_id=telegram_id,
+        text="SECRET KEY успешно получен и сохранен, теперь вы можете активировать режим торговли",
+        reply_markup=await kbd.main_menu(params)
+    )
+
 
 #'stop_demo_confirmed'
 @dp.callback_query(F.data == 'stop_demo_confirmed')
@@ -590,7 +667,7 @@ async def get_pnl(message):
     para = await get_user_settings(telegram_id)
     pnl_op = PNLManager(DATABASE_URL)
     pnl = await pnl_op.calculate_percentage_difference(user_id=telegram_id)
-    print(pnl)
+    # print(pnl)
     default = ('💰 Недостаточно данных'
                '\n\n ⚡ Похоже вы недавно начали использование нашей торговой системы'
                '\n\n ⚡ Для минимального расчета торговый робот должен проработать больше суток')
@@ -598,18 +675,31 @@ async def get_pnl(message):
         text = default
     else:
         text = (f'💰 PNL за период:'
-                f'\n\n🟢 с начала торговли = {pnl.get("initial_vs_latest", 0):.2f}%'
-                f'\n\n🟢 за последний месяц = {pnl.get("month_ago_vs_latest", 0):.2f}%'
-                f'\n\n🟢 за прошедшую неделю = {pnl.get("week_ago_vs_latest", 0):.2f}%'
-                f'\n\n🟢 за прошедшие сутки = {pnl.get("day_ago_vs_latest", 0):.2f}%'
+                f'\n\n🟢 с начала торговли = {pnl.get("initial_vs_latest_percent", 0):.2f}%'
+                f'\n💲  {pnl.get("initial_vs_latest", 0):.2f} USDT'
+        
+                f'\n\n🟢 за последний месяц = {pnl.get("month_ago_vs_latest_percent", 0):.2f}%'
+                f'\n💲  {pnl.get("month_ago_vs_latest", 0):.2f} USDT'
+        
+                f'\n\n🟢 за прошедшую неделю = {pnl.get("week_ago_vs_latest_percent", 0):.2f}%'
+                f'\n💲  {pnl.get("week_ago_vs_latest", 0):.2f} USDT'
+        
+                f'\n\n🟢 за прошедшие сутки = {pnl.get("day_ago_vs_latest_percent", 0):.2f}%'
+                f'\n💲  {pnl.get("day_ago_vs_latest", 0):.2f} USDT'
+        
                 f'\n\n ⚡ расчет осуществляется по времени биржи, то есть UTC'
-                f'\n\n ⚡⚡ для расчета принимаются закончившиеся сутки')
+                f'\n\n ⚡⚡ для расчета принимаются закончившиеся сутки'
+                f'\n\n ⚡⚡⚡ если вы вводили или выводили средства на торговый акканут, это искажает расчет.'
+                f'\n\n ⚡⚡⚡ при ввыоде/выводе рекомендуем обнулить расчет и начать его с новго периода.')
+
 
     await bot.send_message(
         chat_id=telegram_id,
         text=text,
         reply_markup=await kbd.main_menu(para)
         )
+
+
 
 
 #  ####### ГЛАВНОЕ МЕНЮ ########
@@ -836,6 +926,16 @@ async def handle_api_key_message(message: types.Message):
         reply_markup=await kbd.main_menu(params)
     )
 
+# ####### НАСТРОЙКИ ТОРГОВЛИ ########
+#             ############
+#               #####
+
+
+
+
+
+
+
 
 #  ####### ЗАПУСК БОТА ########
 #             ############
@@ -844,7 +944,7 @@ async def handle_api_key_message(message: types.Message):
 async def start_bot():
 
     await bot.delete_webhook(drop_pending_updates=True)
-    #dp.startup.register(on_startup)
+    # dp.startup.register(on_startup)
     try:
         await dp.start_polling(bot)
     finally:

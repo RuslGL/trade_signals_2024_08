@@ -83,23 +83,26 @@ class PNLManager:
                 initial = pnl_records[0]
 
                 data = {}
-                data['initial_vs_latest'] = (float(latest.total_budget) - float(initial.total_budget)) / float(initial.total_budget) * 100
+                data['initial_vs_latest_percent'] = (float(latest.total_budget) - float(initial.total_budget)) / float(initial.total_budget) * 100
+                data['initial_vs_latest'] = (float(latest.total_budget) - float(initial.total_budget))
 
                 # Проверка на день назад
                 day_ago = [record for record in pnl_records if (latest.created_at - record.created_at).days >= 1]
                 if day_ago:
-                    data['day_ago_vs_latest'] = (float(latest.total_budget) - float(day_ago[-1].total_budget)) / float(day_ago[-1].total_budget) * 100
+                    data['day_ago_vs_latest_percent'] = (float(latest.total_budget) - float(day_ago[-1].total_budget)) / float(day_ago[-1].total_budget) * 100
+                    data['day_ago_vs_latest'] = (float(latest.total_budget) - float(day_ago[-1].total_budget))
 
                 # Проверка на неделю назад
                 week_ago = [record for record in pnl_records if (latest.created_at - record.created_at).days >= 7]
                 if week_ago:
-                    data['week_ago_vs_latest'] = (float(latest.total_budget) - float(week_ago[-1].total_budget)) / float(week_ago[-1].total_budget) * 100
+                    data['week_ago_vs_percent'] = (float(latest.total_budget) - float(week_ago[-1].total_budget)) / float(week_ago[-1].total_budget) * 100
+                    data['week_ago_vs'] = (float(latest.total_budget) - float(week_ago[-1].total_budget))
 
                 # Проверка на месяц назад
                 month_ago = [record for record in pnl_records if (latest.created_at - record.created_at).days >= 30]
                 if month_ago:
-                    data['month_ago_vs_latest'] = (float(latest.total_budget) - float(month_ago[-1].total_budget)) / float(month_ago[-1].total_budget) * 100
-
+                    data['month_ago_vs_latest_percent'] = (float(latest.total_budget) - float(month_ago[-1].total_budget)) / float(month_ago[-1].total_budget) * 100
+                    data['month_ago_vs_latest'] = (float(latest.total_budget) - float(month_ago[-1].total_budget))
                 return data
 
 
@@ -114,11 +117,11 @@ async def main():
     # Создание записей для тестирования с положительными и отрицательными значениями
     current_time = datetime.utcnow()
     pnl_data = [
-        { 'user_id': 1, 'created_at': current_time - timedelta(days=365), 'total_budget': '1000.00'},
-        { 'user_id': 1, 'created_at': current_time - timedelta(days=30), 'total_budget': '1100.00'},  # Положительное изменение
-        { 'user_id': 1, 'created_at': current_time - timedelta(days=7), 'total_budget': '1050.00'},  # Отрицательное изменение
-        { 'user_id': 1, 'created_at': current_time - timedelta(days=1), 'total_budget': '1200.00'},  # Положительное изменение
-        { 'user_id': 1, 'created_at': current_time, 'total_budget': '1100.00'},  # Отрицательное изменение
+        { 'user_id': 666038149, 'created_at': get_start_of_day_utc() - timedelta(days=365), 'total_budget': '1000.00'},
+        { 'user_id': 666038149, 'created_at': get_start_of_day_utc() - timedelta(days=30), 'total_budget': '1100.00'},  # Положительное изменение
+        { 'user_id': 666038149, 'created_at': get_start_of_day_utc() - timedelta(days=7), 'total_budget': '1050.00'},  # Отрицательное изменение
+        { 'user_id': 666038149, 'created_at': get_start_of_day_utc() - timedelta(days=1), 'total_budget': '1200.00'},  # Положительное изменение
+        { 'user_id': 666038149, 'created_at': get_start_of_day_utc(), 'total_budget': '1100.00'},  # Отрицательное изменение
     ]
 
     for entry in pnl_data:
