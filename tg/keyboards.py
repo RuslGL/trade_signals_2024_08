@@ -119,7 +119,7 @@ class Keyboards:
         )
         btn_4 = InlineKeyboardButton(
             text='Настройки торговли',
-            callback_data='settings_menu'
+            callback_data='settings'
         )
 
         btn_5 = InlineKeyboardButton(
@@ -127,15 +127,10 @@ class Keyboards:
             callback_data='manage_subscription'
         )
 
-        btn_6 = InlineKeyboardButton(
-            text='Настройки торговли',
-            callback_data='settings'
-        )
 
         our_menu = [[btn_1, btn_2],
                     [btn_3, btn_4],
-                    [btn_5],
-                    [btn_6]]
+                    [btn_5],]
 
 
         # Проверка на админские права и добавление кнопки
@@ -277,4 +272,120 @@ class Keyboards:
 #             ############
 #               #####
 
+    async def show_settings(self):
+            btn_1 = InlineKeyboardButton(
+                 text= 'Открыть настройки',
+                 callback_data='open_settings',
+            )
+            btn_2 = InlineKeyboardButton(
+                text='Главное меню',
+                callback_data='main_menu'
+            )
+            our_menu = [
+                [btn_1],
+                [btn_2],
+            ]
+            return InlineKeyboardMarkup(inline_keyboard=our_menu)
 
+    async def change_settings(self, params):
+            print(params, 'from change_settings')
+            if params.get('spot') == True:
+                text = 'Тип торговли - спотовая'
+            else:
+                text = 'Тип торговли - фьючерсы'
+
+            btn_1 = InlineKeyboardButton(
+                 text= text,
+                 callback_data='settings_spot',
+            )
+
+            btn_2 = InlineKeyboardButton(
+                 text= f'Начальный размер позиции {params.get('min_trade')} USDT',
+                 callback_data='settings_min_trade',
+            )
+
+            btn_3 = InlineKeyboardButton(
+                 text= f'Максимальный размер позиции {params.get('max_trade')} USDT',
+                 callback_data='settings_max_trade',
+            )
+
+            if params.get('averaging') == True:
+                text = 'Применяется усреднение позиции'
+            else:
+                text = 'Усреднение позиции не применяется'
+
+            btn_4 = InlineKeyboardButton(
+                text=text,
+                callback_data='settings_averaging',
+            )
+
+            btn_5 = InlineKeyboardButton(
+                 text= f'Шаг укрупнения {params.get('averaging_size')}',
+                 callback_data='settings_averaging_size',
+            )
+
+
+            btn_6 = InlineKeyboardButton(
+                 text= f'Условия укрупнения {params.get('averaging_step')}%',
+                 callback_data='settings_averaging_step',
+            )
+
+            btn_7 = InlineKeyboardButton(
+                 text= f'Откр. тейк проф при изм. цены {params.get('tp_min')}%',
+                 callback_data='settings_tp_min',
+            )
+
+            btn_8 = InlineKeyboardButton(
+                 text= f'Тейк проф за ценой {params.get('tp_step')}%',
+                 callback_data='settings_tp_step',
+            )
+
+            btn_9 = InlineKeyboardButton(
+                 text= f'Максимальное плечо (фьючерсы) {params.get('max_leverage')}',
+                 callback_data='settings_max_leverage',
+            )
+
+            btn_10 = InlineKeyboardButton(
+                text='Тип маржы изолированная (фьючерсы)',
+                callback_data='settings_isolated_margin'
+            )
+
+            btn_11 = InlineKeyboardButton(
+                text='Меню настроек',
+                callback_data='settings'
+            )
+
+
+            our_menu = [[btn_1], [btn_2], [btn_3],[btn_4],
+                        [btn_5], [btn_6], [btn_7], [btn_8],
+                        [btn_9], [btn_10], [btn_11],]
+            return InlineKeyboardMarkup(inline_keyboard=our_menu)
+
+    async def confirm_settings_bool(self, params):
+            print('Is klavi', params)
+            btn_1 = InlineKeyboardButton(
+                 text= 'Да',
+                 callback_data=f'yes_{params}',
+            )
+
+            btn_2 = InlineKeyboardButton(
+                 text= 'Нет',
+                 callback_data='open_settings',
+            )
+
+
+            btn_3 = InlineKeyboardButton(
+                 text= 'Открыть настройки',
+                 callback_data='open_settings',
+            )
+            btn_4 = InlineKeyboardButton(
+                text='Главное меню',
+                callback_data='main_menu'
+            )
+            our_menu = [
+                [btn_1],
+                [btn_2],
+                [btn_3],
+                [btn_4],
+            ]
+            return InlineKeyboardMarkup(inline_keyboard=our_menu)

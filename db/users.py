@@ -71,8 +71,8 @@ class Users(BaseUsers):
     averaging_size = Column(Float, default=2)  # X2 times against current position but no more than max_trade
 
     # Leverage settings
-    leverage = Column(Float, default=False)
-    max_leverage = Column(Float, default=False)
+    isolated_margin = Column(Boolean, default=True)
+    max_leverage = Column(Float, default=5)
 
     # Trading pairs
     trading_pairs = Column(JSON, default=list)
@@ -245,7 +245,7 @@ if __name__ == '__main__':
         #print(res)
 
 
-        res = await db_users.get_all_users_data()
+        #res = await db_users.get_all_users_data()
         # print(res[['trading_pairs', 'telegram_id', 'subscription', 'standart_settings']])
 
     asyncio.run(main())
