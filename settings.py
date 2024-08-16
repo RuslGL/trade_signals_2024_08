@@ -20,7 +20,7 @@ ENDPOINTS = {
     # account endpoints
     'wallet-balance': '/v5/account/wallet-balance',
     'get_orders': '/v5/order/realtime',
-
+    'set_leverage': '/v5/position/set-leverage',
 }
 
 if IF_TEST:

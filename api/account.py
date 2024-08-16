@@ -121,7 +121,7 @@ if __name__ == '__main__':
 
     async def main():
         telegram_id = 666038149
-        res = await get_wallet_balance(telegram_id, demo=True)
+        res = await get_wallet_balance(telegram_id, demo=False)
         #telegram_id = 7113111974
         #main_url = st.base_url
 

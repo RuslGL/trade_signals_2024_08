@@ -9,9 +9,13 @@ import time
 import aiohttp
 from dotenv import load_dotenv
 
+from code.db.users import UsersOperations
+from code.db.pairs import LinearPairsOperations
+
 import code.settings as st
 
 load_dotenv()
+
 
 DATABASE_URL = str(os.getenv('database_url'))
 
@@ -139,57 +143,80 @@ async def universal_market_order(url, api_key, secret_key, category, symbol, sid
 # ####### STOP TRADE FUNCTIONS ########
 
 
-# ####### TRADE STRATEGY ########
+# ####### LEVERAGE FUNCTIONS ########
 #          ############
 #             #####
+async def set_lev_linears(telegram_id, symbol, leverage, demo=False):
+    user_op = UsersOperations(DATABASE_URL)
+    settings = await user_op.get_user_data(telegram_id)
+
+    if demo:
+        api_key = settings.get('demo_api_key')
+        secret_key = settings.get('demo_secret_key')
+        url = st.demo_url + st.ENDPOINTS.get('set_leverage')
+    else:
+        api_key = settings.get('main_api_key')
+        secret_key = settings.get('main_secret_key')
+        url = st.base_url + st.ENDPOINTS.get('set_leverage')
 
 
+    if not api_key:
+        return -1
+    if not secret_key:
+        return -1
+
+    try:
+        res = (await post_bybit_signed(url, api_key, secret_key,
+                                       category='linear',
+                                       symbol=symbol,
+                                       buyLeverage=leverage, # str '2'
+                                       sellLeverage=leverage,
+                                       )).get('retMsg')
+        if res == 'leverage not modified' or res == 'OK':
+            return 1
+        return -1
+
+    except:
+        return -1
+
+
+async def set_lev_for_all_linears(telegram_id, leverage, demo=True, batch_size=8, delay=1):
+    db_linear_pairs = LinearPairsOperations(DATABASE_URL)
+    data = await db_linear_pairs.get_all_linear_pairs_data()
+    symbols = [entry['name'] for entry in data.values()]
+
+    failed_symbols = []  # Список для символов с ошибками
+
+    for i in range(0, len(symbols), batch_size):
+        batch = symbols[i:i + batch_size]
+        tasks = [set_lev_linears(telegram_id, symbol, leverage, demo) for symbol in batch]
+        results = await asyncio.gather(*tasks)
+
+        # Проверка результатов и добавление символов с ошибками
+        for symbol, result in zip(batch, results):
+            if result == -1:
+                failed_symbols.append(symbol)
+        print('Обновлены 8 символов, failed =', failed_symbols)
+        await asyncio.sleep(delay)
+    print('finished')
+    return failed_symbols
 
 #               #####
 #            ############
-# ####### STOP TRADE STRATEGY ########
-
+# ####### STOP LEVERAGE FUNCTIONS ########
 
 if __name__ == '__main__':
     async def main():
-        # url = 'https://api-demo.bybit.com/v5/order/create'
-        # api_key = str(os.getenv('demo_api_key'))
-        # secret_key = str(os.getenv('demo_secret_key'))
-        # side = 'Sell'
-        # qty = 0.7
-        # price = 139
-        # triggerPrice = 140
-        # orderLinkId = 'test_1'
-        #
-        #
-        # amendment_url = 'https://api-demo.bybit.com/v5/order/amend'
-        # category = 'linear'
-        # category = 'spot'
-        # new_triggerPrice = 139
-        # orderLinkId = 'test_1'
-        # new_price = 138
-        # symbol = 'SOLUSDT'
+        leverage = '1'
+        tradeMode = 0
+        telegram_id = 666038149
+        symbol = 'BTCUSDT'
 
 
 
-
-        # res = await amend_spot_conditional_market_order(amendment_url, api_key, secret_key, symbol, new_price, new_triggerPrice, orderLinkId)
-        # res = await universal_spot_conditional_market_order(url, api_key, secret_key, symbol, side, qty, price, triggerPrice, orderLinkId)
-
-        # api_key = str(os.getenv('demo_api_key'))
-        # secret_key = str(os.getenv('demo_secret_key'))
-        # url = 'https://api-demo.bybit.com/v5/order/create'
-        # symbol = 'SOLUSDT'
-        # #side = 'Sell'
-        # side = "Buy"
-        # category = 'linear'
-        # orderLinkId = 'test_market_5'
-        # qty = 0.8
-        # res = await universal_market_order(url, api_key, secret_key, category, symbol, side, qty, orderLinkId)
-
+        res = await set_lev_for_all_linears(telegram_id, leverage, demo=True, batch_size=8, delay=1)
 
         print(res)
-
 
 
 
