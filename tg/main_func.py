@@ -1006,6 +1006,7 @@ async def change_setting(callback_query):
         print(action)
         text = ('🟢 Начальный размер позиции определяет на какую сумму будут приобретаться монеты (спот) или открываться позиция (фьючерс).'
                 '\n\nЕсли вы уже зарегистрировали api ключи (первично), то размер позиции был расчитан как 10% от вашего баланса.'
+                '\n\nРеальный размер позиции может незначительно отличаться от текущей настройки, это вязано с проскальзываниями и настройками монет.'
                 '\n\n🔑  Если вы хотите изменить настройку Минимальный размер'
                 '\nотправьте следующим сообщением фразу'
                 '\nМинимальный размер позиции и сумму в USDT, которую хотите установить как настройку'
@@ -1359,12 +1360,19 @@ async def handle_api_key_message(message: types.Message):
 #             ############
 #               #####
 
-async def start_bot():
+# async def start_bot():
+#
+#     await bot.delete_webhook(drop_pending_updates=True)
+#     # dp.startup.register(on_startup)
+#     try:
+#         await dp.start_polling(bot)
+#     finally:
+#         await bot.session.close()
 
-    await bot.delete_webhook(drop_pending_updates=True)
-    # dp.startup.register(on_startup)
+async def start_bot():
+    await bot.delete_webhook(drop_pending_updates=False)
     try:
-        await dp.start_polling(bot)
+        await dp.start_polling(bot, polling_timeout=1)
     finally:
         await bot.session.close()
 

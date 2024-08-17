@@ -142,6 +142,37 @@ async def universal_market_order(url, api_key, secret_key, category, symbol, sid
 #            ############
 # ####### STOP TRADE FUNCTIONS ########
 
+# ####### TP/SL FUNCTIONS ########
+#          ############
+#             #####
+async def set_tp_linears(telegram_id, symbol, trailingStop, demo=False):
+    user_op = UsersOperations(DATABASE_URL)
+    settings = await user_op.get_user_data(telegram_id)
+    if demo:
+        api_key = settings.get('demo_api_key')
+        secret_key = settings.get('demo_secret_key')
+        url = st.demo_url + st.ENDPOINTS.get('linear_tp')
+    else:
+        api_key = settings.get('main_api_key')
+        secret_key = settings.get('main_secret_key')
+        url = st.base_url + st.ENDPOINTS.get('linear_tp')
+    print(url, api_key, secret_key)
+    if not api_key:
+        return -1
+    if not secret_key:
+        return -1
+    try:
+        print('try')
+        res = await post_bybit_signed(url, api_key, secret_key,
+                                      category='linear',
+                                      symbol=symbol,
+                                      tpslMode='Full',
+                                      trailingStop=trailingStop,
+                                      )
+        return res
+    except:
+        return -1
+
 
 # ####### LEVERAGE FUNCTIONS ########
 #          ############
@@ -207,15 +238,46 @@ async def set_lev_for_all_linears(telegram_id, leverage, demo=True, batch_size=8
 
 if __name__ == '__main__':
     async def main():
-        leverage = '1'
+
+
+
+
+        async def set_tp_linears(telegram_id, symbol, trailingStop, demo=False):
+            user_op = UsersOperations(DATABASE_URL)
+            settings = await user_op.get_user_data(telegram_id)
+            if demo:
+                api_key = settings.get('demo_api_key')
+                secret_key = settings.get('demo_secret_key')
+                url = st.demo_url + st.ENDPOINTS.get('linear_tp')
+            else:
+                api_key = settings.get('main_api_key')
+                secret_key = settings.get('main_secret_key')
+                url = st.base_url + st.ENDPOINTS.get('linear_tp')
+            print(url, api_key, secret_key)
+            if not api_key:
+                return -1
+            if not secret_key:
+                return -1
+            try:
+                print('try')
+                res = await post_bybit_signed(url, api_key, secret_key,
+                                              category='linear',
+                                              symbol=symbol,
+                                              tpslMode='Full',
+                                              trailingStop=trailingStop,
+                                              )
+                return res
+            except:
+                return -1
+
+        leverage = '2'
         tradeMode = 0
         telegram_id = 666038149
-        symbol = 'BTCUSDT'
+        symbol = 'SOLUSDT'
+        trailingStop = '1'
 
-
-
-        res = await set_lev_for_all_linears(telegram_id, leverage, demo=True, batch_size=8, delay=1)
-
+        # res = await set_lev_for_all_linears(telegram_id, leverage, demo=True, batch_size=8, delay=1)
+        res = await set_tp_linears(telegram_id, symbol, trailingStop, demo=True)
         print(res)
 
 
