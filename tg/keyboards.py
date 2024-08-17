@@ -362,7 +362,6 @@ class Keyboards:
             return InlineKeyboardMarkup(inline_keyboard=our_menu)
 
     async def confirm_settings_bool(self, params):
-            print('Is klavi', params)
             btn_1 = InlineKeyboardButton(
                  text= 'Да',
                  callback_data=f'yes_{params}',

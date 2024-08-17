@@ -192,9 +192,9 @@ async def set_lev_linears(telegram_id, symbol, leverage, demo=False):
 
 
     if not api_key:
-        return -1
+        return -2
     if not secret_key:
-        return -1
+        return -2
 
     try:
         res = (await post_bybit_signed(url, api_key, secret_key,
@@ -205,19 +205,48 @@ async def set_lev_linears(telegram_id, symbol, leverage, demo=False):
                                        )).get('retMsg')
         if res == 'leverage not modified' or res == 'OK':
             return 1
+        print(res)
         return -1
 
     except:
         return -1
 
 
-async def set_lev_for_all_linears(telegram_id, leverage, demo=True, batch_size=8, delay=1):
+    # async def set_lev_for_all_linears(telegram_id, leverage, demo=True, batch_size=8, delay=1):
+    # db_linear_pairs = LinearPairsOperations(DATABASE_URL)
+    # data = await db_linear_pairs.get_all_linear_pairs_data()
+    # symbols = [entry['name'] for entry in data.values()]
+    #
+    # failed_symbols = []  # Список для символов с ошибками
+    #
+    # for i in range(0, len(symbols), batch_size):
+    #     batch = symbols[i:i + batch_size]
+    #     tasks = [set_lev_linears(telegram_id, symbol, leverage, demo) for symbol in batch]
+    #     results = await asyncio.gather(*tasks)
+    #
+    #     # Проверка результатов и добавление символов с ошибками
+    #     for symbol, result in zip(batch, results):
+    #         if result == -1:
+    #             failed_symbols.append(symbol)
+    #     print('Обновлены 8 символов, failed =', failed_symbols)
+    #     await asyncio.sleep(delay)
+    # print('finished')
+    # return failed_symbols
+
+
+async def set_lev_for_all_linears(telegram_id, leverage, demo=True, batch_size=8, delay=1.1):
     db_linear_pairs = LinearPairsOperations(DATABASE_URL)
     data = await db_linear_pairs.get_all_linear_pairs_data()
     symbols = [entry['name'] for entry in data.values()]
 
     failed_symbols = []  # Список для символов с ошибками
 
+    # Проверяем первый символ перед выполнением батчей
+    first_symbol = symbols[0]
+    first_result = await set_lev_linears(telegram_id, first_symbol, leverage, demo)
+
+    if first_result == -2:
+        raise Exception(f"Ошибка - отсутсвуют API ключи. Прерывание выполнения.")
     for i in range(0, len(symbols), batch_size):
         batch = symbols[i:i + batch_size]
         tasks = [set_lev_linears(telegram_id, symbol, leverage, demo) for symbol in batch]
@@ -229,8 +258,21 @@ async def set_lev_for_all_linears(telegram_id, leverage, demo=True, batch_size=8
                 failed_symbols.append(symbol)
         print('Обновлены 8 символов, failed =', failed_symbols)
         await asyncio.sleep(delay)
+
     print('finished')
     return failed_symbols
+
+async def set_lev_for_all_linears_demo_plus_main(telegram_id, leverage):
+    # changes leverage both on demo and main
+    try:
+        await set_lev_for_all_linears(telegram_id, leverage, demo=False, batch_size=8, delay=1)
+        await set_lev_for_all_linears(telegram_id, leverage, demo=True, batch_size=8, delay=1)
+        return True
+    except:
+        return False
+
+
+
 
 #               #####
 #            ############
@@ -240,41 +282,6 @@ if __name__ == '__main__':
     async def main():
 
 
-
-
-        async def set_tp_linears(telegram_id, symbol, trailingStop, demo=False):
-            user_op = UsersOperations(DATABASE_URL)
-            settings = await user_op.get_user_data(telegram_id)
-            if demo:
-                api_key = settings.get('demo_api_key')
-                secret_key = settings.get('demo_secret_key')
-                url = st.demo_url + st.ENDPOINTS.get('linear_tp')
-            else:
-                api_key = settings.get('main_api_key')
-                secret_key = settings.get('main_secret_key')
-                url = st.base_url + st.ENDPOINTS.get('linear_tp')
-            print(url, api_key, secret_key)
-            if not api_key:
-                return -1
-            if not secret_key:
-                return -1
-            try:
-                print('try')
-                res = await post_bybit_signed(url, api_key, secret_key,
-                                              category='linear',
-                                              symbol=symbol,
-                                              tpslMode='Full',
-                                              trailingStop=trailingStop,
-                                              )
-                return res
-            except:
-                return -1
-
-        leverage = '2'
-        tradeMode = 0
-        telegram_id = 666038149
-        symbol = 'SOLUSDT'
-        trailingStop = '1'
 
         # res = await set_lev_for_all_linears(telegram_id, leverage, demo=True, batch_size=8, delay=1)
         res = await set_tp_linears(telegram_id, symbol, trailingStop, demo=True)
