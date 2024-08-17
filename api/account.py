@@ -85,11 +85,11 @@ async def get_user_orders(telegram_id, url, category, openOnly=0, demo=None):
         secret_key = settings.get('main_secret_key')
 
     if not api_key:
-        print('no_api')
-        return -1
+        #print('no_api')
+        return []
     if not secret_key:
-        print('no_secret')
-        return -1
+        #print('no_secret')
+        return []
 
     timestamp = str(int(time.time() * 1000))
     headers = {
