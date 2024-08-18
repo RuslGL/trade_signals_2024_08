@@ -72,7 +72,7 @@ class Users(BaseUsers):
 
     # Leverage settings
     isolated_margin = Column(Boolean, default=True)
-    max_leverage = Column(Float, default=5)
+    max_leverage = Column(Float, default=1)
 
     # Trading pairs
     trading_pairs = Column(JSON, default=list)
