@@ -66,10 +66,40 @@ async def get_wallet_balance(telegram_id, demo=None, coin=None):
 
 
 async def find_usdt_budget(telegram_id, demo=False):
-    balance = await get_wallet_balance(telegram_id, demo=demo, coin='USDT')
-    if isinstance(balance, dict):
-        return float((balance.get('coin', 0))[0].get('usdValue'))
-    return balance
+    user_op = UsersOperations(DATABASE_URL)
+
+    settings = await user_op.get_user_data(telegram_id)
+    if demo:
+        api_key = settings.get('demo_api_key')
+        secret_key = settings.get('demo_secret_key')
+        url = st.demo_url + st.ENDPOINTS.get('wallet-balance')
+    else:
+        api_key = settings.get('main_api_key')
+        secret_key = settings.get('main_secret_key')
+        url = st.base_url + st.ENDPOINTS.get('wallet-balance')
+
+    if not api_key:
+        return -1
+    if not secret_key:
+        return -1
+
+    timestamp = str(int(time.time() * 1000))
+    headers = {
+        'X-BAPI-API-KEY': api_key,
+        'X-BAPI-TIMESTAMP': timestamp,
+        'X-BAPI-RECV-WINDOW': '5000'
+    }
+    params = {'accountType': 'UNIFIED'}
+    params['coin'] = 'USDT'
+    headers['X-BAPI-SIGN'] = gen_signature_get(params, timestamp, api_key, secret_key)
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, params=params) as response:
+                data = await response.json()
+        return data.get('result').get('list')[0].get('coin')[0].get('walletBalance')
+    except:
+        return -1
 
 
 async def get_user_orders(telegram_id, url, category, openOnly=0, demo=None):
@@ -121,16 +151,16 @@ if __name__ == '__main__':
 
     async def main():
         telegram_id = 666038149
-        res = await get_wallet_balance(telegram_id, demo=False)
+        #res = await get_wallet_balance(telegram_id, demo=False)
         #telegram_id = 7113111974
         #main_url = st.base_url
 
 
 
         # #url = st.demo_url + st.ENDPOINTS.get('wallet-balance')
-        # url = st.base_url + st.ENDPOINTS.get('wallet-balance')
+        url = st.base_url + st.ENDPOINTS.get('wallet-balance')
         # #res = await get_wallet_balance(telegram_id, url)
-        # res = await find_usdt_budget(telegram_id, url, demo=False)
+        res = await find_usdt_budget(telegram_id, demo=True)
 
 
         print(res)

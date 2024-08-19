@@ -55,7 +55,7 @@ class Users(BaseUsers):
     trade_type = Column(String, default='real')  # real/demo
     trade_pair_if = Column(Float, default=1)  # % in dirrection and only adter trade
 
-    min_trade = Column(Float, default=10)  # Percent from current budget
+    min_trade = Column(Float, default=20)  # Percent from current budget
                                            # Start position but if budget less - buy less
     max_trade = Column(Float, default=100) # Percent from current budget
 

@@ -1,12 +1,20 @@
 import asyncio
 import os
 import time
+
 from datetime import datetime, timedelta
+
+from warnings import filterwarnings
+filterwarnings("ignore")
+
+from datetime import datetime, timedelta, timezone
+
 from multiprocessing import Process, Queue
 from dotenv import load_dotenv
 
 import traceback
 import uuid
+
 
 
 
@@ -125,6 +133,31 @@ async def trade_performance(database_url, price_queue):
 
                 spot_prices, linear_prices = price_queue.get()
 
+
+                # Получаем доступные бюджеты для всех пользователей (real и demo)
+                tasks_budget = []
+                user_task_map = {}
+
+                for index, row in users.iterrows():
+                    user_id = row['telegram_id']
+
+                    if row['trade_type'] == 'demo':
+                        # url = demo_url + st.ENDPOINTS.get('wallet-balance')
+                        task = asyncio.create_task(find_usdt_budget(user_id, demo=True))
+                    else:
+                        # url = trade_url + st.ENDPOINTS.get('wallet-balance')
+                        task = asyncio.create_task(find_usdt_budget(user_id, demo=False))
+
+                    tasks_budget.append(task)
+                    user_task_map[task] = user_id
+
+                budget_results = await asyncio.gather(*tasks_budget)
+                budget_map = {user_task_map[task]: result for task, result in zip(tasks_budget, budget_results)}
+                symbol = coin.upper() + 'USDT'
+                print('coin.upper() - на уровне сигнала', coin.upper())
+                print('symbol - на уровне сигнала', symbol)
+                print('budget_map - на уровне сигнала', budget_map)
+
             #               #####
             #           ############
             # ####### SIGNAL LOGIC ENDS HERE ########
@@ -142,29 +175,30 @@ async def trade_performance(database_url, price_queue):
                     users_spot = users[users['spot'] == True]
                     users_linear = users[users['spot'] != True]
 
-                    # Получаем доступные бюджеты для всех пользователей (real и demo)
-                    tasks_budget = []
-                    user_task_map = {}
+                    # # Получаем доступные бюджеты для всех пользователей (real и demo)
+                    # tasks_budget = []
+                    # user_task_map = {}
+                    #
+                    # for index, row in users.iterrows():
+                    #     user_id = row['telegram_id']
+                    #
+                    #     if row['trade_type'] == 'demo':
+                    #         # url = demo_url + st.ENDPOINTS.get('wallet-balance')
+                    #         task = asyncio.create_task(find_usdt_budget(user_id, demo=True))
+                    #     else:
+                    #         # url = trade_url + st.ENDPOINTS.get('wallet-balance')
+                    #         task = asyncio.create_task(find_usdt_budget(user_id, demo=False))
+                    #
+                    #     tasks_budget.append(task)
+                    #     user_task_map[task] = user_id
+                    #
+                    # budget_results = await asyncio.gather(*tasks_budget)
+                    # budget_map = {user_task_map[task]: result for task, result in zip(tasks_budget, budget_results)}
+                    # symbol = coin.upper() + 'USDT'
+                    # print('coin.upper() - на уровне базового канала', coin.upper() )
+                    # print('symbol - на уровне базового канала', symbol)
+                    # print('budget_map - на уровне базового канала', budget_map)
 
-                    for index, row in users.iterrows():
-                        user_id = row['telegram_id']
-
-                        if row['trade_type'] == 'demo':
-                            # url = demo_url + st.ENDPOINTS.get('wallet-balance')
-                            task = asyncio.create_task(find_usdt_budget(user_id, demo=True))
-                        else:
-                            url = trade_url + st.ENDPOINTS.get('wallet-balance')
-                            task = asyncio.create_task(find_usdt_budget(user_id, demo=False))
-
-                        tasks_budget.append(task)
-                        user_task_map[task] = user_id
-
-                    budget_results = await asyncio.gather(*tasks_budget)
-                    budget_map = {user_task_map[task]: result for task, result in zip(tasks_budget, budget_results)}
-                    symbol = coin.upper() + 'USDT'
-                    print('coin.upper() - на уровне базового канала', coin.upper() )
-                    print('symbol - на уровне базового канала', symbol)
-                    print('budget_map - на уровне базового канала', budget_map)
 
                     tasks = []
 
@@ -403,57 +437,79 @@ async def trade_performance(database_url, price_queue):
                         else:
                             side = 'Sell'
 
-                        spot_price = spot_prices.get(coin.upper() + 'USDT')
-                        linear_price = linear_prices.get(coin.upper() + 'USDT')
+                        spot_price = spot_prices.get(symbol)
+                        linear_price = linear_prices.get(symbol)
 
+                        # чась символов может быть только в споте или только фьючах
+                        try:
+                            spot_settings = spot_data.get(coin.upper())
+                            spot_min_volume = spot_settings.get('min_order_qty')
+                            spot_qty_tick = spot_settings.get('base_precision')
+                        except:
+                            pass
 
-                        spot_settings = spot_data.get(coin.upper())
-
-                        spot_min_volume = spot_settings.get('min_order_qty')
-                        spot_qty_tick = spot_settings.get('base_precision')
-
-                        linear_settings = linear_data.get(coin.upper())
-                        linear_min_volume = linear_settings.get('min_order_qty')
-                        linear_qty_tick = linear_settings.get('qty_step')
+                        try:
+                            linear_settings = linear_data.get(coin.upper())
+                            linear_min_volume = linear_settings.get('min_order_qty')
+                            linear_qty_tick = linear_settings.get('qty_step')
+                        except:
+                            pass
 
                         closed_positions_no_tp = closed_positions_no_tp[['owner_id', 'symbol', 'side',
-                                                                         'bybit_id', 'avgPrice', 'cumExecQty',
+                                                                         'bybit_id', 'avgPrice', 'cumExecValue',
                                                                          'order_type', 'cumExecQty', 'market']]
 
 
                         print('Проверяем условия усреднения')
-                        # print(closed_positions_no_tp)
 
-                        #from position "avgPrice"  "cumExecQty" owner_id
 
+                        # ОБЕРНУТЬ В ТРАЙ ЭКСЕПТ
                         for index, row in closed_positions_no_tp.iterrows():
                             user = users[users['telegram_id'] == row['owner_id']]
+                            # если включен стоп трейд пропускаем юзера
+                            if user['stop_trading'].iloc[0]:
+                                continue
                             averaging = user['averaging'].iloc[0]
-                            # print(averaging)
+                            max_trade = float(user['max_trade'].iloc[0])
                             if averaging:
                                 averaging_step = float(user['averaging_step'].iloc[0])
                                 averaging_size = float(user['averaging_size'].iloc[0])
-                                # print(averaging_step, averaging_size)
-                                prev_order_type = row['order_type']
-                                # print('prev_order_type', prev_order_type)
                                 prev_price = float(row['avgPrice'])
                                 prev_volume = float(row['cumExecQty'].iloc[0])
                                 extra_volume = abs((prev_volume * averaging_size) - prev_volume)
+
+                                spot_price = spot_prices.get(symbol)
+                                linear_price = linear_prices.get(symbol)
+
+
                                 if row['order_type'] == 'spot':
                                     category = 'spot'
                                     print(row['order_type'])
                                     current_price = float(spot_price)
+                                    limit_volume = max_trade / current_price
+                                    if extra_volume + prev_volume >= limit_volume:
+                                        extra_volume = limit_volume - prev_volume
+                                    limit_budget = float(budget_map[row['owner_id']]) / current_price
+                                    if extra_volume > limit_budget:
+                                        extra_volume = limit_budget
+
                                     extra_volume = adjust_quantity(extra_volume, spot_min_volume, spot_qty_tick)
                                     print(extra_volume, 'extra_volume')
                                 else:
                                     current_price = float(linear_price)
+                                    limit_volume = max_trade / current_price
+                                    if extra_volume + prev_volume >= limit_volume:
+                                        extra_volume = limit_volume - prev_volume
+                                    limit_budget = float(budget_map[row['owner_id']]) / current_price
+                                    if extra_volume > limit_budget:
+                                        extra_volume = limit_budget
+
                                     category = 'linear'
                                     extra_volume = adjust_quantity(extra_volume, linear_min_volume, linear_qty_tick)
                                     print(extra_volume, 'extra_volume')
 
                                 if extra_volume == -1:
-                                    print('Недостаточно объема для минимальной покупки')
-
+                                    print('Недостаточно объема для минимальной покупки усреднения')
 
 
                                 if side == 'Buy':
@@ -472,7 +528,7 @@ async def trade_performance(database_url, price_queue):
                                                 print('api_key', api_key)
                                                 secret_key = user['demo_secret_key'].iloc[0]
                                                 print('secret_key', secret_key)
-                                                orderLinkId = f"{str(row['owner_id'])}_demo_linear_aver_{uuid.uuid4().hex[:8]}"
+                                                orderLinkId = f"{str(row['owner_id'])}_demo_aver_{uuid.uuid4().hex[:8]}"
                                                 # print('orderLinkId', orderLinkId)
                                             else:
                                                 api_url = order_trade_url
@@ -480,8 +536,7 @@ async def trade_performance(database_url, price_queue):
                                                 print('api_key', api_key)
                                                 secret_key = user['main_secret_key'].iloc[0]
                                                 print('api_key', api_key)
-                                                orderLinkId = f"{str(row['owner_id'])}_real_linear_aver_{uuid.uuid4().hex[:8]}"
-                                                #print('orderLinkId', orderLinkId)
+                                                orderLinkId = f"{str(row['owner_id'])}_real_aver_{uuid.uuid4().hex[:8]}"
 
                                             res = await universal_market_order(api_url, str(api_key), str(secret_key), category, symbol,
                                                                           side, extra_volume, orderLinkId)
@@ -506,6 +561,7 @@ async def trade_performance(database_url, price_queue):
                                                 print('Добавлен', orderLinkId)
 
                                 if side == 'Sell':
+                                    print(prev_price, current_price)
                                     if prev_price > current_price:
                                         print('No averaging for sell - linears only')
                                     else:
@@ -519,9 +575,7 @@ async def trade_performance(database_url, price_queue):
                                             if trade_type == 'demo':
                                                 api_url = order_demo_url
                                                 api_key = user['demo_api_key'].iloc[0]
-                                                print('api_key', api_key)
                                                 secret_key = user['demo_secret_key'].iloc[0]
-                                                print('secret_key', secret_key)
                                                 orderLinkId = f"{str(row['owner_id'])}_demo_linear_aver_{uuid.uuid4().hex[:8]}"
                                                 print('orderLinkId', orderLinkId)
                                             else:
@@ -561,7 +615,7 @@ async def trade_performance(database_url, price_queue):
 
                 #                    #####
                 #                ############
-                # ####### START AVERAGING TRADE LOGIC ########
+                # ####### STOP AVERAGING TRADE LOGIC ########
 
 
             # ####### START CHECK IF PRIMARY ORDER PERFORMED ########
@@ -572,7 +626,6 @@ async def trade_performance(database_url, price_queue):
             try:
                 open_positions = (await positions_op.get_positions_by_fields({"orderStatus": False,}))['bybit_id'].to_list()
             except:
-
                 open_positions = []
 
             positions_filled = []
@@ -603,10 +656,16 @@ async def trade_performance(database_url, price_queue):
 
             users_trade = users[users['trade_type'] != 'demo']['telegram_id'].to_list()
             for user in users_trade:
-                res_real = await get_user_orders(user, user_orders_trade_url, 'spot', 2, demo=None)
+                try:
+                    res_real = await get_user_orders(user, user_orders_trade_url, 'spot', 2, demo=None)
+                except:
+                    res_real = []
                 if not res_real:
                     res_real = []
-                res_real.extend(await get_user_orders(user, user_orders_trade_url, 'linear', 2, demo=None))
+                try:
+                    res_real.extend(await get_user_orders(user, user_orders_trade_url, 'linear', 2, demo=None))
+                except:
+                    pass
 
                 res_real = {
                     order['orderLinkId']: {
@@ -636,14 +695,39 @@ async def trade_performance(database_url, price_queue):
                             "cumExecQty": positions_filled[0][open_position]['cumExecQty'],
                             "cumExecFee": positions_filled[0][open_position]['cumExecFee'],
                         }
-                        if positions_filled[0][open_position]['type'] == 'averaging':
-                            averaging_positions_filled.append(position_data)
-                            print('Закрылась позиция averaging - рассчитать и изменить основной ордер, позицию удалить')
-                            print(open_position)
-                        else:
-                            # Обновляем  позицию в базе данных если не averaging
-                            await positions_op.upsert_position(position_data)
+                        print(positions_filled[0][open_position])
+                        # if positions_filled[0][open_position]['type'] == 'averaging':
+                        #     averaging_positions_filled.append(position_data)
+                        #     print('Закрылась позиция averaging - рассчитать и изменить основной ордер, позицию удалить')
+                        #     print(open_position)
+                        #else:
+                        await positions_op.upsert_position(position_data)
+            try:
+                avg_positions = await positions_op.get_positions_by_fields({"type": "averaging", })
+                for index, avg_position in avg_positions.iterrows():
+                    moth_position_id = avg_position['depends_on']
+                    avg_exec_value = avg_position['cumExecValue']
+                    avg_exec_qty = avg_position['cumExecQty']
+                    moth_position = await positions_op.get_position_by_bybit_id(moth_position_id)
+                    cum_exec_value = float(moth_position['cumExecValue']) + float(avg_exec_value)
+                    cum_exec_qty = float(moth_position['cumExecQty']) + float(avg_exec_qty)
+                    cum_exec_price = cum_exec_value / cum_exec_qty
+                    cum_exec_fee = str(f"{float(avg_position['cumExecFee']) + float(moth_position['cumExecFee']):.8f}")
+                    # cum_exec_fee = float(avg_position['cumExecFee']) + float(moth_position['cumExecFee'])
+                    position_data = {
+                        "bybit_id": moth_position_id,
+                        "avgPrice": str(cum_exec_price),
+                        "cumExecValue": str(cum_exec_value),
+                        "cumExecQty": str(cum_exec_qty),
+                        "cumExecFee": cum_exec_fee
+                    }
+                    await positions_op.upsert_position(position_data)
+                    await positions_op.delete_position_by_bybit_id(avg_positions["bybit_id"].iloc[0])
 
+
+            except Exception as e:
+                print('Oшибка при обработке усредняющих позиций', e)
+                pass
 
                 #                    #####
                 #                ############
@@ -801,6 +885,8 @@ async def tp_execution(database_url, price_queue):
 
                         print('Трейлинг стоп на фьюч открываем ИЗНАЧАЛЬНО ШОРТ?')
                         print('Материнский ордер', row)
+
+                        # проверить что изначальный тип ордера тоже был demo или real
                         if user['trade_type'].iloc[0] == 'demo':
                             demo = True
                         else:
@@ -872,7 +958,7 @@ async def tp_execution(database_url, price_queue):
                     new_price = round_price(new_triggerPrice * 0.998, float(price_tick))
                     #print('Price current', current_price, 'price_prev', prev_price, 'next_trigger', new_triggerPrice)
                     prev_orderLinkId = row['bybit_id'].iloc[0]
-                    #print(f'Меняем ордер и его дату в базе {prev_orderLinkId}')
+
 
                     amend_order_url = amend_order_demo_url if user['trade_type'].iloc[0] == 'demo' else amend_order_trade_url
 
@@ -915,40 +1001,69 @@ def run_tp_execution_process(price_queue):
 
 async def daily_task():
     while True:
-        now = datetime.utcnow()
-        next_run = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        try:
+            now = datetime.now(timezone.utc)
+            next_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-        if now >= next_run:
-            next_run += timedelta(days=1)
+            if now >= next_midnight:
+                next_midnight += timedelta(days=1)
 
-        print('Следующее обновление баланса в ', next_run)
+            print('Следующее обновление баланса в', next_midnight)
 
-        sleep_time = (next_run - now).total_seconds()
-        await asyncio.sleep(sleep_time)
+            sleep_time_until_midnight = (next_midnight - now).total_seconds()
 
-        pnl_op = PNLManager(DATABASE_URL)
-        users_op = UsersOperations(DATABASE_URL)
-        users = await users_op.get_all_users_data()
-        users = [
-            user['telegram_id']
-            for user in users
-            if user.get('main_api_key') and user.get('main_secret_key')
-        ]
+            while sleep_time_until_midnight > 0:
 
-        result = []
-        for user in users:
+                # Определяем, сколько времени можно спать до следующего шага
+
+                try:
+                    # Выполняем задачу
+                    print('Выполняется каждые 5 минут или меньше')
+
+                except Exception as e:
+                    print(f"Ошибка в процессе daily_task - short tasks: {e}")
+
+                sleep_interval = min(5*60, sleep_time_until_midnight)
+                await asyncio.sleep(sleep_interval)
+
+               # Обновляем оставшееся время до полуночи после выполнения задачи
+                now = datetime.now(timezone.utc)
+                sleep_time_until_midnight = (next_midnight - now).total_seconds()
+
+                # Если оставшееся время меньше 15 минут, выходим из цикла
+                if sleep_time_until_midnight <= 0:
+                    break
+
+            # Выполняем основную задачу в полночь
+            print('Выполняется основная задача по обновлению PNL в 00:00:00')
+
+            pnl_op = PNLManager(DATABASE_URL)
+            users_op = UsersOperations(DATABASE_URL)
+            users = await users_op.get_all_users_data()
+
+            valid_users = []
             try:
-                total_budget = await get_wallet_balance(user)
-                #total_budget = balance.get('totalWalletBalance')
-                if total_budget != -1:
-                    result.append({'user_id': user, 'total_budget': total_budget})
-                print(f'Пробелмы с получением баланса для Юзера {user}')
+                for index, user in users.iterrows():
+                    if user.get('main_api_key') and user.get('main_secret_key'):
+                        valid_users.append(user['telegram_id'])
             except Exception as e:
-                print(f"Error fetching wallet balance for user {user}: {e}")
+                print("Произошла ошибка при обработке пользователей:", e)
+                print("Спорная переменная:", user)
+                raise
 
-        for entry in result:
-            await pnl_op.add_pnl_entry(entry)
-        print('Балансы обновлены', now)
+            result = []
+            for user_id in valid_users:
+                try:
+                    total_budget = await get_wallet_balance(user_id)
+                    if total_budget != -1:
+                        result.append({'user_id': user_id, 'total_budget': total_budget})
+                except Exception as e:
+                    print(f"Ошибка при получении баланса для пользователя {user_id}: {e}")
+
+            for entry in result:
+                await pnl_op.add_pnl_entry(entry)
+        except Exception as e:
+            print(f"Ошибка в блоке ежедневных задач daily tasks{e}")
 
 
 

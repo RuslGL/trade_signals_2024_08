@@ -202,7 +202,7 @@ if __name__ == "__main__":
         positions_manager = PositionsOperations(DATABASE_URL)
 
         # Создание таблицы
-        await positions_manager.create_table()
+        # await positions_manager.create_table()
 
         # Добавление или обновление первой позиции
         first_position = {
@@ -247,7 +247,8 @@ if __name__ == "__main__":
 
         # Удаление основной позиции (и зависимой)
         # await positions_manager.delete_position_by_bybit_id("12345")
-
+        res = await positions_manager.get_position_by_bybit_id("666038149_demo_linear_1c5300314f38")
+        print(res)
         # getting position with dependants
         #res = await positions_manager.get_position_with_dependents('12345')
         #print(res)
