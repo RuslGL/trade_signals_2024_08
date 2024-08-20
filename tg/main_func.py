@@ -24,6 +24,7 @@ from code.tg.keyboards import Keyboards
 from code.db.subscriptions import SubscriptionsOperations
 from code.db.pnl import PNLManager
 from code.db.tg_channels import TgChannelsOperations
+from code.db.pairs import LinearPairsOperations, SpotPairsOperations
 
 from code.api.account import find_usdt_budget, get_wallet_balance
 from code.api.trade import set_lev_for_all_linears
@@ -38,6 +39,8 @@ channel_id = str(os.getenv('channel'))
 
 DATABASE_URL = os.getenv('database_url')
 db_users_op = UsersOperations(DATABASE_URL)
+db_spot_pairs = SpotPairsOperations(DATABASE_URL)
+db_linear_pairs = LinearPairsOperations(DATABASE_URL)
 
 
 ADMIN_ID = os.getenv('owner_id')
@@ -944,7 +947,151 @@ async def open_settings(message: types.Message):
         chat_id=telegram_id,
         text=(f'🔐 Для получения описания или изменения настройки нажмите нужную кнопку'),
         reply_markup=await kbd.change_settings(params)
+    )
 
+
+@dp.callback_query(F.data == 'coins')
+async def open_settings(message: types.Message):
+    telegram_id = message.from_user.id
+    params = await get_user_settings(int(telegram_id))
+    # print(params)
+    await bot.send_message(
+        chat_id=telegram_id,
+        text=(f'🟢 Здесь вы можете выбрать список торгуемых монет, а также '
+              f'выбрать торговлю только новыми монетами'),
+        reply_markup=await kbd.coins_settings(params)
+    )
+
+# ########## СПИСОК МОНЕТ #############
+#       #####################
+#                ####
+
+@dp.callback_query(F.data == 'new_coins_on_off')
+async def new_coins_on_off(message: types.Message):
+    telegram_id = message.from_user.id
+    params = await get_user_settings(int(telegram_id))
+    if "-1" in params.get('trading_pairs'):
+        fields = {'trading_pairs': []}
+        await db_users_op.update_user_fields(telegram_id, fields)
+        text = "🟢  Выключена торговля новыми монетами"
+    else:
+        fields = {'trading_pairs': ["-1"]}
+        await db_users_op.update_user_fields(telegram_id, fields)
+        text = "🟢 Включена торговля новыми монетами."
+    params = await get_user_settings(int(telegram_id))
+    await bot.send_message(
+        chat_id=telegram_id,
+        text=text,
+        reply_markup=await kbd.change_settings(params)
+    )
+
+
+@dp.callback_query(F.data == 'chose_coins')
+async def chose_coins(message: types.Message):
+    telegram_id = message.from_user.id
+    params = await get_user_settings(int(telegram_id))
+    if "-1" in params.get('trading_pairs'):
+        text = "🟢  Сейчас у вас включен режим торговли новыми монетами, при выборе вручную торгуемых монет, торговля новыми монетами будет отключена. Продолжить?"
+    else:
+        if not params.get('trading_pairs'):
+            text = ("🟢  Сейчас список торгуемых монет пустой."
+                    "\n\n🟢  Хотите добавить монеты?")
+        else: text = (f"Ваш список торгуемых монет:"
+                      f"\n\n{', '.join(params.get('trading_pairs'))}"
+                      f"\n\nИзменить?")
+    params = await get_user_settings(int(telegram_id))
+    await bot.send_message(
+        chat_id=telegram_id,
+        text=text,
+        reply_markup=await kbd.change_coins(params)
+    )
+
+
+#'add_coins'
+@dp.callback_query(F.data == 'add_coins')
+async def add_coins(message: types.Message):
+    telegram_id = message.from_user.id
+    params = await get_user_settings(int(telegram_id))
+    text = (f"🟢Чтобы добавить монету в список напишите:"
+            f"\nДобавить и название монеты"
+            f"\n\n🟢Например:"
+            f"\nДобавить BTCUSDT"
+            f"\n\n🔴Чтобы удалить монету из списка напишите:"
+            f"\nУдалить и название монеты"
+            f"\n\n🔴Например:"
+            f"\nУдалить TONUSDT")
+
+    await bot.send_message(
+        chat_id=telegram_id,
+        text=text,
+        reply_markup=await kbd.change_coins(params)
+    )
+
+
+@dp.message(F.text.lower().startswith('добавить'))
+async def add_coin(message: types.Message):
+    telegram_id = message.from_user.id
+    result = (str(message.text.split()[-1])).upper()
+    params = await get_user_settings(int(telegram_id))
+    spot = await db_spot_pairs.get_spot_pairs_data([result[:-4]])
+    linear = await db_linear_pairs.get_linear_pairs_data([result[:-4]])
+
+    try:
+        current_list = params.get('trading_pairs')
+        if "-1" in params.get('trading_pairs'):
+            current_list = []
+        print(spot, linear)
+        if not spot and not linear:
+            text=("🔴 Этой монеты нет в списке торгуемых на биржею"
+                  "\n\n Проверьте верность написания символа")
+        else:
+            current_list.append(result.upper())
+            current_list = list(set(current_list))
+            await db_users_op.update_user_fields(telegram_id, {'trading_pairs': current_list})
+            text = "🟢  Настройки успешно обновлены"
+    except Exception as e:
+        text = '🔴  Сейчас невозможно изменить параметры, попробуйте позднее'
+    params = await get_user_settings(int(telegram_id))
+    print(params)
+    await bot.send_message(
+        chat_id=telegram_id,
+        text=text,
+        reply_markup=await kbd.show_settings()
+    )
+
+
+@dp.message(F.text.lower().startswith('удалить'))
+async def add_coin(message: types.Message):
+    telegram_id = message.from_user.id
+    result = str(message.text.split()[-1])
+    params = await get_user_settings(int(telegram_id))
+    text_1 = ("🔴  Удалние невозможною Возможно этой монеты несуществует в списке "
+              "\n\nили вы неправильно ее прописали")
+    try:
+        current_list = params.get('trading_pairs')
+        if "-1" in params.get('trading_pairs'):
+            text = "🔴  Вы торгуете новыми монетами, монету удалить невозможно, ее не в вашем списке"
+        if not params.get('trading_pairs'):
+            text = ("Список торгуемых вами монет пуст."
+                    "\n\n 🔴  Удалить монету невозможно")
+        if result.upper() in current_list:
+            try:
+                current_list.remove(result.upper())
+                await db_users_op.update_user_fields(telegram_id, {'trading_pairs': current_list})
+                text = "🟢  Удаление успешно завершено"
+            except:
+                text = text_1
+        else:
+            text= text_1
+    except:
+        text = text_1
+
+    params = await get_user_settings(int(telegram_id))
+    print(params)
+    await bot.send_message(
+        chat_id=telegram_id,
+        text=text,
+        reply_markup=await kbd.show_settings()
     )
 
 

@@ -320,10 +320,14 @@ if __name__ == '__main__':
             # Добавьте другие пары здесь
         ]
 
-        await db_spot_pairs.insert_spot_pairs(spot_symbols)
+       # await db_spot_pairs.insert_spot_pairs(spot_symbols)
 
-        db_linear_pairs = LinearPairsOperations(DATABASE_URL)
-        await db_linear_pairs.create_table()
+        #db_linear_pairs = LinearPairsOperations(DATABASE_URL)
+        #await db_linear_pairs.create_table()
+        result = 'BTC'
+        res  = await db_spot_pairs.get_spot_pairs_data([result])
+        # linear = await db_linear_pairs.get_linear_pairs_data(result)
+        print(res)
 
     asyncio.run(main())
 

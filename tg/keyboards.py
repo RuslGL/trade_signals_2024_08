@@ -350,7 +350,13 @@ class Keyboards:
                 callback_data='settings_trade_pair_if'
             )
 
+
             btn_11 = InlineKeyboardButton(
+                text='Торгуемые монеты',
+                callback_data='coins'
+            )
+
+            btn_12 = InlineKeyboardButton(
                 text='Меню настроек',
                 callback_data='settings'
             )
@@ -358,8 +364,75 @@ class Keyboards:
 
             our_menu = [[btn_1], [btn_2], [btn_3],[btn_4],
                         [btn_5], [btn_6], [btn_7], [btn_8],
-                        [btn_9], [btn_10], [btn_11],]
+                        [btn_9], [btn_10], [btn_11], [btn_12]]
             return InlineKeyboardMarkup(inline_keyboard=our_menu)
+
+
+
+    async def coins_settings(self, params):
+        print('V klaviature coins settings', params)
+        if "-1" in params.get('trading_pairs'):
+            text_1 = "Торг. новыми монетами. Выключить?"
+        else:
+            text_1 = "Торг. новыми монетами. Включить?"
+
+        btn_1 = InlineKeyboardButton(
+             text= text_1,
+             callback_data='new_coins_on_off',
+        )
+
+        btn_2 = InlineKeyboardButton(
+             text='Выбрать торгуемые монеты вручную',
+             callback_data='chose_coins',
+        )
+
+
+        btn_3 = InlineKeyboardButton(
+             text= 'Открыть настройки',
+             callback_data='open_settings',
+        )
+        btn_4 = InlineKeyboardButton(
+            text='Главное меню',
+            callback_data='main_menu'
+        )
+        our_menu = [
+            [btn_1],
+            [btn_2],
+            [btn_3],
+            [btn_4],
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=our_menu)
+
+
+    async def change_coins(self, params):
+        # print('V klaviature coins settings', params)
+        # if "-1" in params.get('trading_pairs'):
+        #     text_1 = "Торг. новыми монетами. Выключить?"
+        # else:
+        #     text_1 = "Торг. новыми монетами. Включить?"
+
+        btn_1 = InlineKeyboardButton(
+             text= "Добавить монеты в список",
+             callback_data='add_coins',
+        )
+
+        btn_2 = InlineKeyboardButton(
+             text= 'Открыть настройки',
+             callback_data='open_settings',
+        )
+
+        btn_3 = InlineKeyboardButton(
+             text='Вернуться в главное меню',
+             callback_data='main_menu',
+        )
+
+
+        our_menu = [
+            [btn_1],
+            [btn_2],
+            [btn_3],
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=our_menu)
 
     async def confirm_settings_bool(self, params):
             btn_1 = InlineKeyboardButton(
