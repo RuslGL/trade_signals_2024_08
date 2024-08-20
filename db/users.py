@@ -71,7 +71,7 @@ class Users(BaseUsers):
     averaging_size = Column(Float, default=2)  # X2 times against current position but no more than max_trade
 
     # Leverage settings
-    isolated_margin = Column(Boolean, default=True)
+    # isolated_margin = Column(Boolean, default=True)
     max_leverage = Column(Float, default=1)
 
     # Trading pairs

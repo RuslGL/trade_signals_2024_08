@@ -9,6 +9,7 @@ ENDPOINTS = {
     # market endpoints
     'get_instruments_info': '/v5/market/instruments-info',
     'get_tick': '/v5/market/tickers',
+    'announcements': '/v5/announcements/index',
 
 
     # trade endpoints

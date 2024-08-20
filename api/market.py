@@ -100,12 +100,30 @@ async def get_prices():
 
     return spot, linear
 
+async def get_announcements():
+
+    url = st.mainnet_url + st.ENDPOINTS.get('announcements')
+    params = {
+        'locale': "en-US",
+        'type': 'new_crypto',
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, params=params) as response:
+            res = (await response.json()).get('result').get('list')
+
+        new_coins = []
+        for element in res:
+            an = element['title'].split()
+            usdt_word = next((word for word in an if word.endswith('USDT')), None)
+            if usdt_word is not None:
+                new_coins.append(usdt_word)
+
+        return new_coins
+
 
 if __name__ == '__main__':
     async def main():
-        res = await process_spot_linear_settings()
-        # res = await get_prices()
-        print(res[0])
+        res = await get_announcements()
 
-
+        print(res)
     asyncio.run(main())

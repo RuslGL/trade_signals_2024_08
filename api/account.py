@@ -150,7 +150,7 @@ async def get_user_orders(telegram_id, url, category, openOnly=0, demo=None):
 if __name__ == '__main__':
 
     async def main():
-        telegram_id = 666038149
+        telegram_id = 1265026852
         #res = await get_wallet_balance(telegram_id, demo=False)
         #telegram_id = 7113111974
         #main_url = st.base_url

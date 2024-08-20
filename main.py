@@ -154,9 +154,9 @@ async def trade_performance(database_url, price_queue):
                 budget_results = await asyncio.gather(*tasks_budget)
                 budget_map = {user_task_map[task]: result for task, result in zip(tasks_budget, budget_results)}
                 symbol = coin.upper() + 'USDT'
-                print('coin.upper() - на уровне сигнала', coin.upper())
-                print('symbol - на уровне сигнала', symbol)
-                print('budget_map - на уровне сигнала', budget_map)
+                # print('coin.upper() - на уровне сигнала', coin.upper())
+                # print('symbol - на уровне сигнала', symbol)
+                # print('budget_map - на уровне сигнала', budget_map)
 
             #               #####
             #           ############
@@ -174,31 +174,6 @@ async def trade_performance(database_url, price_queue):
                     # Разделяем пользователей на спотовых и линейных
                     users_spot = users[users['spot'] == True]
                     users_linear = users[users['spot'] != True]
-
-                    # # Получаем доступные бюджеты для всех пользователей (real и demo)
-                    # tasks_budget = []
-                    # user_task_map = {}
-                    #
-                    # for index, row in users.iterrows():
-                    #     user_id = row['telegram_id']
-                    #
-                    #     if row['trade_type'] == 'demo':
-                    #         # url = demo_url + st.ENDPOINTS.get('wallet-balance')
-                    #         task = asyncio.create_task(find_usdt_budget(user_id, demo=True))
-                    #     else:
-                    #         # url = trade_url + st.ENDPOINTS.get('wallet-balance')
-                    #         task = asyncio.create_task(find_usdt_budget(user_id, demo=False))
-                    #
-                    #     tasks_budget.append(task)
-                    #     user_task_map[task] = user_id
-                    #
-                    # budget_results = await asyncio.gather(*tasks_budget)
-                    # budget_map = {user_task_map[task]: result for task, result in zip(tasks_budget, budget_results)}
-                    # symbol = coin.upper() + 'USDT'
-                    # print('coin.upper() - на уровне базового канала', coin.upper() )
-                    # print('symbol - на уровне базового канала', symbol)
-                    # print('budget_map - на уровне базового канала', budget_map)
-
 
                     tasks = []
 
@@ -248,6 +223,8 @@ async def trade_performance(database_url, price_queue):
                             # Рассчитываем количнство монеты к покупке с учетом сеттингов монеты
                             qty_info_spot = calculate_purchase_volume(sum_amount, spot_price, spot_min_volume,
                                                                       spot_qty_tick)
+
+                            print('Покупка для спот лонга', users[users['telegram_id'] == user_id]['username'], sum_amount, trigger_price, qty_info_spot)
                             # если функция возвращает отриц значение значит сумма недостаточ - пропуск для этого юзера
                             if qty_info_spot < 0:
                                 continue
@@ -275,7 +252,8 @@ async def trade_performance(database_url, price_queue):
                             orderLinkId = f'{user_id}_demo_spot_{uuid.uuid4().hex[:12]}' if user_info[
                                                                                                 'trade_type'] == 'demo' else \
                                 f'{user_id}_real_spot_{uuid.uuid4().hex[:12]}'
-
+                            print('Задача на ордер', api_url, api_key, secret_key, symbol, 'Buy', order_data['qty_info'],
+                                  order_data['price'], order_data['triggerPrice'], orderLinkId)
                             # Создаем задачу для выполнения ордера
                             task = asyncio.create_task(
                                 universal_spot_conditional_market_order(
@@ -289,7 +267,7 @@ async def trade_performance(database_url, price_queue):
 
                     ###### linears
                     # по торговой стратегии у фьючей могут быть и лонги и шорты
-                    linear_price = linear_prices.get(coin.upper() + 'USDT')
+                    linear_price = linear_prices.get(coin.upper() + 'USDT', None)
                     if linear_price:
                         print('Start linear long', linear_price)
 
@@ -391,7 +369,13 @@ async def trade_performance(database_url, price_queue):
                         side = 'Buy'
                     else:
                         side = 'Sell'
-                    # сохраняем исполненные в positions
+
+
+
+                    # пробуем ассинхронно отправить в БД
+
+                    tasks = []
+
                     for position in results:
                         if isinstance(position, dict) and position.get('retMsg') == 'OK':
                             res = position.get('result')
@@ -407,7 +391,45 @@ async def trade_performance(database_url, price_queue):
                                 "symbol": symbol,
                                 "side": side,
                             }
-                            await positions_op.upsert_position(pos)
+
+                            # Создаем задачу для вставки позиции с обработкой ошибок
+                            tasks.append(
+                                asyncio.create_task(
+                                    positions_op.upsert_position(pos)
+                                )
+                            )
+
+                    # Выполняем все задачи параллельно
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                    # Обработка результатов выполнения задач
+                    for i, result in enumerate(results):
+                        if isinstance(result, Exception):
+                            print(f"Ошибка при вставке позиции {tasks[i].get_name()}: {result}")
+                            try:
+                                # Повторная попытка вставки
+                                await positions_op.upsert_position(tasks[i].get_name())
+                            except Exception as e:
+                                print(f"Повторная попытка не удалась для позиции {tasks[i].get_name()}: {e}")
+
+
+                    # сохраняем исполненные в positions выше пробуем тоже но ассинхронно
+                    # for position in results:
+                    #     if isinstance(position, dict) and position.get('retMsg') == 'OK':
+                    #         res = position.get('result')
+                    #         print(res)
+                    #         orderLinkId = res.get('orderLinkId')
+                    #         details = orderLinkId.split('_')
+                    #
+                    #         pos = {
+                    #             "bybit_id": orderLinkId,
+                    #             "owner_id": int(details[0]),
+                    #             "market": details[1],
+                    #             "order_type": details[2],
+                    #             "symbol": symbol,
+                    #             "side": side,
+                    #         }
+                    #         await positions_op.upsert_position(pos)
 
                 #####################################################
 
@@ -475,7 +497,7 @@ async def trade_performance(database_url, price_queue):
                                 averaging_step = float(user['averaging_step'].iloc[0])
                                 averaging_size = float(user['averaging_size'].iloc[0])
                                 prev_price = float(row['avgPrice'])
-                                prev_volume = float(row['cumExecQty'].iloc[0])
+                                prev_volume = float(row['cumExecQty'])
                                 extra_volume = abs((prev_volume * averaging_size) - prev_volume)
 
                                 spot_price = spot_prices.get(symbol)
@@ -637,7 +659,10 @@ async def trade_performance(database_url, price_queue):
                 res_one = await get_user_orders(user, user_orders_demo_url, 'spot', 1, demo=True)
                 if not res_one:
                     res_one = []
-                res_one.extend(await get_user_orders(user, user_orders_demo_url, 'linear', 1, demo=True))
+                try:
+                    res_one.extend(await get_user_orders(user, user_orders_demo_url, 'linear', 1, demo=True))
+                except:
+                    pass
                 res_demo = {
                     order['orderLinkId']: {
                         'orderStatus': order['orderStatus'],
@@ -826,7 +851,7 @@ async def tp_execution(database_url, price_queue):
                             trailingStop = abs(current_price - triggerPrice)
                             rest = await set_tp_linears(user['telegram_id'].iloc[0], symbol, trailingStop, demo=demo)
                             print(rest, 'дальше изменяем в базе материнский ордер')
-                            if isinstance(rest, dict) and rest.get('retMsg') == 'OK':
+                            if isinstance(rest, dict) and (rest.get('retMsg') == 'OK' or rest.get('retMsg') == 'can not set tp/sl/ts for zero position'):
                                 pos = {
                                     "bybit_id": row['bybit_id'],
                                     'tp_opened': True,
@@ -1124,6 +1149,7 @@ def main():
     price_update_process.join()
     daily_task_process.join()
     tp_execution_process.join()
+
 
 if __name__ == "__main__":
     main()

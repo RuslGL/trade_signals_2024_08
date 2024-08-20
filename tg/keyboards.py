@@ -346,8 +346,8 @@ class Keyboards:
             )
 
             btn_10 = InlineKeyboardButton(
-                text='Тип маржы изолированная (фьючерсы)',
-                callback_data='settings_isolated_margin'
+                text='Режим открытия позиций',
+                callback_data='settings_trade_pair_if'
             )
 
             btn_11 = InlineKeyboardButton(
