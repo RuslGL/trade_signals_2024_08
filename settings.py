@@ -18,6 +18,7 @@ ENDPOINTS = {
     'open_orders': '/v5/order/realtime',
     'amend_order': '/v5/order/amend',
     'linear_tp': '/v5/position/trading-stop',
+    'open_positions': '/v5/position/list',
 
     # account endpoints
     'wallet-balance': '/v5/account/wallet-balance',

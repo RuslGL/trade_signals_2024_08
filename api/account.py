@@ -147,23 +147,102 @@ async def get_user_orders(telegram_id, url, category, openOnly=0, demo=None):
         print(e)
         return []
 
+
+async def get_user_positions(settings, demo=None):
+
+    if demo:
+        api_key = settings.get('demo_api_key')
+        secret_key = settings.get('demo_secret_key')
+        url = st.demo_url + st.ENDPOINTS.get('open_positions')
+
+    else:
+        api_key = settings.get('main_api_key')
+        secret_key = settings.get('main_secret_key')
+        url = st.base_url + st.ENDPOINTS.get('open_positions')
+
+    if not api_key:
+        #print('no_api')
+        return []
+    if not secret_key:
+        #print('no_secret')
+        return []
+
+    timestamp = str(int(time.time() * 1000))
+    headers = {
+        'X-BAPI-API-KEY': api_key,
+        'X-BAPI-TIMESTAMP': timestamp,
+        'X-BAPI-RECV-WINDOW': '5000'
+    }
+
+    params = {
+        'category': 'linear',
+        #'symbol': 'TONUSDT',
+        'settleCoin': 'USDT',
+        'limit': 200,
+
+    }
+
+    headers['X-BAPI-SIGN'] = gen_signature_get(params, timestamp, api_key, secret_key)
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, params=params) as response:
+                data = await response.json()
+        if data.get('retMsg') == 'OK':
+            return data.get('result').get('list')
+        else:
+            return []
+
+    except Exception as e:
+        print(e)
+        return []
+
+
 if __name__ == '__main__':
 
     async def main():
-        telegram_id = 1265026852
-        #res = await get_wallet_balance(telegram_id, demo=False)
+        telegram_id = 666038149
+        user_op = UsersOperations(DATABASE_URL)
+        settings = await user_op.get_user_data(telegram_id)
+        tasks = [
+            asyncio.create_task(get_user_positions(settings, demo=None)),
+            asyncio.create_task(get_user_positions(settings, demo=True)),
+        ]
+
+        results = await asyncio.gather(*tasks)
+
+        main_res = results[0]
+        demo_res = results[1]
+        if main_res:
+            main_active_positions = [element.get('symbol') for element in main_res ]
+        else:
+            main_active_positions = []
+
+        if demo_res:
+            demo_active_positions = [element.get('symbol') for element in demo_res ]
+        else:
+            demo_active_positions = []
+
+        print(main_active_positions)
+        print(demo_active_positions)
+
+
+
+
+        # res = await get_user_positions(settings, demo=True)
+        # print(res)
         #telegram_id = 7113111974
         #main_url = st.base_url
 
 
 
         # #url = st.demo_url + st.ENDPOINTS.get('wallet-balance')
-        url = st.base_url + st.ENDPOINTS.get('wallet-balance')
+        #url = st.base_url + st.ENDPOINTS.get('wallet-balance')
         # #res = await get_wallet_balance(telegram_id, url)
-        res = await find_usdt_budget(telegram_id, demo=True)
+        #res = await find_usdt_budget(telegram_id, demo=True)
 
 
-        print(res)
+        #print(res)
 
 
 
