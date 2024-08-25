@@ -85,6 +85,11 @@ async def daily_task():
 
                 try:
                     # Выполняем задачу
+
+                    # ######## CHECK ALL LINEARS POSITIONS ########
+                    #           ##########################
+                    #                       ########
+
                     print('Выполняется каждую 1 минут или меньше')
                     print('Poluchaem otritie posizii')
 
@@ -101,7 +106,7 @@ async def daily_task():
                              },
 
                         )
-                        print('open_positions_from_db', open_positions_from_db)
+                        # print('open_positions_from_db', open_positions_from_db)
                         all_users = [user['telegram_id'] for user in (await user_op.get_active_users())]
 
                         print(all_users)
@@ -152,13 +157,12 @@ async def daily_task():
                                     'bybit_id': to_change,
                                     'finished': True,
                                 })
-#################
 
                             #
                             #
                             # Найдем элементы, которые есть в API, но отсутствуют в базе данных
                             not_in_db = list(set_api - set_db)
-                            print('Позиции которые есть на бирже но нет в БД - нужно внести и дальше обрабатывать', not_in_db)
+                            # print('Позиции которые есть на бирже но нет в БД - нужно внести и дальше обрабатывать', not_in_db)
                             for element in demo_res:
                                 if element.get('symbol') in not_in_db:
                                     print('to insert demo', element.get('symbol'))
@@ -179,7 +183,7 @@ async def daily_task():
                                         'cumExecQty': element.get('size'),
                                         'cumExecFee': str(float(element.get('size')) * 0.001),
                                     }
-                                    print('vnesti v BD' , pos_data)
+                                    # print('vnesti v BD', pos_data)
                                     await positions_op.upsert_position(pos_data)
 
                             for element in main_res:
@@ -206,7 +210,51 @@ async def daily_task():
 
                                     await positions_op.upsert_position(pos_data)
                     except Exception as e:
-                        print(f"Ошибка в процессе выявдения пропущенных позиций: {e}")
+                        print(f"Ошибка в процессе выявления пропущенных фьючерсных позиций: {e}")
+                        traceback.print_exc()
+                    #                       ########
+                    #           ##########################
+                    # ######## FINISHED WITH CHECK ALL LINEARS POSITIONS ########
+
+
+
+                    # ########  CHECK ALL SPOT POSITIONS ########
+                    #           ##########################
+                    #                       ########
+
+                    try:
+                        open_positions_from_db = await positions_op.get_positions_by_fields(
+                            {
+                                'finished': False,
+                                'orderStatus': True,
+                                'order_type': 'spot',
+                                'type': 'tp'
+                             },
+
+                        )
+
+                        for index, position in open_positions_from_db.iterrows():
+                            moth_position_id = position['depends_on']
+                            tp_position_id = position['bybit_id']
+
+                            moth_data = {
+                                "bybit_id": moth_position_id,
+                                'finished': True,
+                            }
+
+                            tp_data = {
+                                "bybit_id": tp_position_id,
+                                'finished': True,
+                            }
+
+                            # print(moth_data, tp_data)
+                            await positions_op.upsert_position(moth_data)
+                            await positions_op.upsert_position(tp_data)
+
+                        # print(open_positions_from_db)
+
+                    except Exception as e:
+                        print(f"Ошибка в процессе обработки полностью исполненных спотовых позиций: {e}")
                         traceback.print_exc()
 
                 except Exception as e:
