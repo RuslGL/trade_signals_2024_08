@@ -162,13 +162,17 @@ class UsersOperations:
                 current_time = func.now()
 
                 # Запрос для получения всех пользователей с подпиской больше текущего времени
-                query = select(Users.telegram_id, Users.username).where(
+                query = select(Users.telegram_id, Users.username, Users.subscription).where(
                     func.to_timestamp(Users.subscription) > current_time)
                 result = await session.execute(query)
                 active_users = result.fetchall()
 
                 # Преобразование результатов в список словарей
-                return [{'telegram_id': user.telegram_id, 'username': user.username or 'N/A'} for user in active_users]
+                return [{
+                    'telegram_id': user.telegram_id,
+                    'username': user.username or 'N/A',
+                    'subscription': user.subscription
+                } for user in active_users]
 
     async def get_inactive_users(self) -> List[Dict[str, Optional[str]]]:
         async with self.async_session() as session:

@@ -156,13 +156,12 @@ async def set_tp_linears(telegram_id, symbol, trailingStop, demo=False):
         api_key = settings.get('main_api_key')
         secret_key = settings.get('main_secret_key')
         url = st.base_url + st.ENDPOINTS.get('linear_tp')
-    print(url, api_key, secret_key)
     if not api_key:
         return -1
     if not secret_key:
         return -1
     try:
-        print('try')
+        #print('try')
         res = await post_bybit_signed(url, api_key, secret_key,
                                       category='linear',
                                       symbol=symbol,
@@ -205,7 +204,7 @@ async def set_lev_linears(telegram_id, symbol, leverage, demo=False):
                                        )).get('retMsg')
         if res == 'leverage not modified' or res == 'OK':
             return 1
-        print(res)
+        #print(res)
         return -1
 
     except:
@@ -259,7 +258,6 @@ async def set_lev_for_all_linears(telegram_id, leverage, demo=True, batch_size=8
         print('Обновлены 8 символов, failed =', failed_symbols)
         await asyncio.sleep(delay)
 
-    print('finished')
     return failed_symbols
 
 async def set_lev_for_all_linears_demo_plus_main(telegram_id, leverage):
@@ -284,8 +282,8 @@ if __name__ == '__main__':
 
 
         # res = await set_lev_for_all_linears(telegram_id, leverage, demo=True, batch_size=8, delay=1)
-        res = await set_tp_linears(telegram_id, symbol, trailingStop, demo=True)
-        print(res)
+        #res = await set_tp_linears(telegram_id, symbol, trailingStop, demo=True)
+        print()
 
 
 

@@ -386,12 +386,17 @@ class Keyboards:
              callback_data='chose_coins',
         )
 
-
         btn_3 = InlineKeyboardButton(
+             text='Включить торговлю всеми монетами',
+             callback_data='all_coins',
+        )
+
+
+        btn_4 = InlineKeyboardButton(
              text= 'Открыть настройки',
              callback_data='open_settings',
         )
-        btn_4 = InlineKeyboardButton(
+        btn_5 = InlineKeyboardButton(
             text='Главное меню',
             callback_data='main_menu'
         )
@@ -400,6 +405,7 @@ class Keyboards:
             [btn_2],
             [btn_3],
             [btn_4],
+            [btn_5],
         ]
         return InlineKeyboardMarkup(inline_keyboard=our_menu)
 

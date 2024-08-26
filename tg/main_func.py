@@ -338,9 +338,14 @@ async def show_users(callback_query):
         text_one = '🛑 Показать пользователей без подписки:'
         res = await db_users.get_inactive_users()
 
-
+    print('res', res)
+    # res = '\n\n'.join(
+    #     f"{index + 1}. {item['username']} {item['telegram_id']}" for index, item in enumerate(res))
     res = '\n\n'.join(
-        f"{index + 1}. {item['username']} {item['telegram_id']}" for index, item in enumerate(res))
+        f"{index + 1}. {item['username']} {item['telegram_id']}"
+        f"\n Подписка до: {datetime.fromtimestamp(item['subscription']).strftime('%d-%m-%Y %H:%M')}"
+        for index, item in enumerate(res)
+    )
 
     text_two = ("🔴 Для удаления пользователя "
                 "\n🔴 отправьте его id в чат"
@@ -717,8 +722,10 @@ async def get_pnl(message):
 async def start(message: types.Message):
     telegram_id = message.from_user.id
     params = await get_user_settings(telegram_id)
+    active_users = await db_users_op.get_active_users()
+    active_users = [user.get('telegram_id') for user in active_users]
 
-    if not params:
+    if not params or telegram_id not in active_users:
         subscriptions_op = SubscriptionsOperations(DATABASE_URL)
         params = await subscriptions_op.get_all_subscriptions_data()
         params['new_user_id'] = telegram_id
@@ -777,8 +784,8 @@ async def mange_subscription(callback_query):
         chat_id=telegram_id,
         text=f' {txt} 🔑🔑🔑'
              f'\n\nЕсли вы хотите продлить срок пользования торговым ботом, необходимо приобрести подписку\n'
-             f'\n\n1 МЕСЯЦ - {params.get('1 МЕСЯЦ').get('cost')} 💲USDT'
-             f'\n\n6 МЕСЯЦЕВ - {params.get('6 МЕСЯЦЕВ').get('cost')} 💲USDT'
+             f'\n\n1 МЕСЯЦ - {params.get('1 МЕСЯЦ').get('cost')} 💲USDT ~ 1 год {12 * int(params.get('1 МЕСЯЦ').get('cost'))} '
+             f'\n\n6 МЕСЯЦЕВ - {params.get('6 МЕСЯЦЕВ').get('cost')} 💲USDT ~ 1 год {2 * int(params.get('1 МЕСЯЦ').get('cost'))}'
              f'\n\n1 ГОД - {params.get('1 ГОД').get('cost')} 💲USDT'
              f'\n\nНАВСЕГДА - {params.get('НАВСЕГДА').get('cost')} 💲USDT'
              f'\n\nВыбрать подписку:',
@@ -801,11 +808,19 @@ async def handle_subscription(callback_query):
     }
 
     # print(params)
+    await bot.send_message(
+        chat_id=telegram_id,
+        text=f'🟢 Инструкция по оплате'
+             f'\n\nОплата принимается путем перечисления USDT TRC-20 '
+             f'\nна наш аккаунт Bybit'
+             f'\nUID 25090329'
+             f'\nПосле оплаты нажмите кнопку ОПЛАЧЕНО'
+             f'\n\n🟢 Адрес для перевода:'
+    )
 
     await bot.send_message(
         chat_id=telegram_id,
-        text='Инструкция по оплате\n\n\n\n\n\n'
-             '\n\nПосле оплаты нажмите кнопку ОПЛАЧЕНО',
+        text=f'\nTEavwoY3tWSNMYdK4cxMi2zHvZ5PGx87mM',
         reply_markup=await kbd.confirm_payment(params)
     )
 
@@ -851,7 +866,8 @@ async def confirm_subscription(callback_query):
     await bot.send_message(
         chat_id=ADMIN_ID,
         text=f'Юзер {name} c id {telegram_id} запрашивает подверждение оплаты.'
-             f'\n\n Подтвердить? ЗДЕСЬ КНОПКИ ПОДВЕРЖДЕНИЯ И ОТПРАВКА ЮЗЕРУ',
+             f'\nСрок подписки {subs}'
+             f'\n\n Подтвердить?',
         reply_markup=await kbd.admin_payment_confirmation(params)
     )
 
@@ -873,21 +889,18 @@ async def confirmed_payment(callback_query):
     except:
         start = datetime.now()
 
-
+    # Определяем длительность периода
     if subs == '6 МЕСЯЦЕВ':
         period = start + relativedelta(months=6)
-        subs = int(time.mktime(period.timetuple()))
     elif subs == '1 ГОД':
         period = start + relativedelta(years=1)
-        subs = int(time.mktime(period.timetuple()))
     elif subs == 'НАВСЕГДА':
         period = start + relativedelta(years=100)
-        subs = int(time.mktime(period.timetuple()))
     else:
         period = start + relativedelta(months=1)
-        subs = int(time.mktime(period.timetuple()))
 
-    #name = f'{callback_query.from_user.first_name} {callback_query.from_user.last_name}'
+    subs = int(time.mktime(period.timetuple()))
+
     params = {
         #'username':name,
         'telegram_id': int(user_id),
@@ -897,10 +910,7 @@ async def confirmed_payment(callback_query):
     await user_op.upsert_user(params)
 
     params = await get_user_settings(int(user_id))
-    #print(user_id)
-    #print(params)
 
-    #### telegram_id = message.from_user.id
     await bot.send_message(
         chat_id=user_id,
         text='ПОЗДРАВЛЯЕМ ОПЛАТА ПРОШЛА УСПЕШНО!',
@@ -1004,6 +1014,20 @@ async def chose_coins(message: types.Message):
         chat_id=telegram_id,
         text=text,
         reply_markup=await kbd.change_coins(params)
+    )
+
+'all_coins'
+@dp.callback_query(F.data == 'all_coins')
+async def all_coins(message: types.Message):
+    telegram_id = message.from_user.id
+    fields = {'trading_pairs': []}
+    await db_users_op.update_user_fields(telegram_id, fields)
+    params = await get_user_settings(int(telegram_id))
+    await bot.send_message(
+        chat_id=telegram_id,
+        text=f"🟢  Вы включили торговлю всеми монетами."
+             f"\n\nЭтот параметр можно изменить выбрав торговлю новыми монетами или выбрав перечень торгуемых монет вручную",
+        reply_markup=await kbd.change_settings(params)
     )
 
 
