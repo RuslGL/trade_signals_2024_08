@@ -98,7 +98,7 @@ async def unuversal_linear_conditional_market_order(url, api_key, secret_key,
                                    orderLinkId=orderLinkId)
 
 
-async def universal_spot_conditional_market_order(url, api_key, secret_key,
+async def universal_spot_conditional_limit_order(url, api_key, secret_key,
                                                   symbol, side, qty, price,
                                                   triggerPrice, orderLinkId):
     return await post_bybit_signed(url,api_key, secret_key,
@@ -114,7 +114,22 @@ async def universal_spot_conditional_market_order(url, api_key, secret_key,
                                    orderLinkId=orderLinkId
                                   )
 
-async def amend_spot_conditional_market_order(url, api_key, secret_key,
+async def universal_spot_conditional_market_order(url, api_key, secret_key,
+                                                  symbol, side, qty,
+                                                  triggerPrice, orderLinkId):
+    return await post_bybit_signed(url,api_key, secret_key,
+                                   orderType='Market',
+                                   category='spot',
+                                   symbol=symbol,
+                                   side=side,
+                                   qty=qty,
+                                   triggerPrice=triggerPrice,
+                                   marketUnit='baseCoin',
+                                   orderFilter='StopOrder',
+                                   orderLinkId=orderLinkId
+                                  )
+
+async def amend_spot_conditional_limit_order(url, api_key, secret_key,
                                               symbol, price,
                                               triggerPrice, orderLinkId):
     return await post_bybit_signed(url, api_key, secret_key,
@@ -126,6 +141,16 @@ async def amend_spot_conditional_market_order(url, api_key, secret_key,
                                    orderLinkId=orderLinkId
                                    )
 
+async def amend_spot_conditional_market_order(url, api_key, secret_key,
+                                              symbol,
+                                              triggerPrice, orderLinkId):
+    return await post_bybit_signed(url, api_key, secret_key,
+                                   orderType='Market',
+                                   category='spot',
+                                   symbol=symbol,
+                                   triggerPrice=triggerPrice,
+                                   orderLinkId=orderLinkId
+                                   )
 
 async def universal_market_order(url, api_key, secret_key, category, symbol, side, qty, orderLinkId):
     return await post_bybit_signed(url, api_key, secret_key,
@@ -278,12 +303,23 @@ async def set_lev_for_all_linears_demo_plus_main(telegram_id, leverage):
 
 if __name__ == '__main__':
     async def main():
+        async def universal_market():
+            url = 'https://api-demo.bybit.com' +'/v5/order/create'
+            api_key = '4AUSvuQyAZ1KgxrMvz'
+            secret_key = 'WgW4gfYMK7IXJjhsr1uw2uJSTzNLKgbAr2Iy'
+            return await post_bybit_signed(url, api_key, secret_key,
+                                           orderType='Market',
+                                           category='linear',
+                                           symbol='BTCUSDT',
+                                           side='Buy',
+                                           qty=0.001,
+                                           marketUnit='baseCoin',
+                                           )
 
 
+        res = await universal_market()
 
-        # res = await set_lev_for_all_linears(telegram_id, leverage, demo=True, batch_size=8, delay=1)
-        #res = await set_tp_linears(telegram_id, symbol, trailingStop, demo=True)
-        print()
+        print(res)
 
 
 

@@ -324,9 +324,12 @@ class Keyboards:
                  callback_data='settings_averaging_size',
             )
 
+            item = params.get('averaging_step')
+            if item == 0.01:
+                item = 0
 
             btn_6 = InlineKeyboardButton(
-                 text= f'Условия укрупнения {params.get('averaging_step')}%',
+                 text= f'Условия укрупнения {item}%',
                  callback_data='settings_averaging_step',
             )
 
