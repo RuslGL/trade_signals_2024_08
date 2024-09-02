@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import and_
 
+from datetime import datetime, timedelta
+
 # Загрузка переменных окружения из .env файла
 load_dotenv()
 
@@ -198,6 +200,22 @@ class PositionsOperations:
 
             # Преобразуем список словарей в DataFrame
             return pd.DataFrame(positions_dicts)
+
+
+    async def get_old_unfilled_positions(self) -> List[str]:
+        async with self.async_session() as session:
+            time_threshold = datetime.now() - timedelta(minutes=300)
+
+            result = await session.execute(
+                select(Positions.bybit_id)
+                .where(
+                    Positions.orderStatus == False,
+                    Positions.created <= time_threshold
+                )
+            )
+
+            bybit_ids = result.scalars().all()
+            return bybit_ids
 
 if __name__ == "__main__":
     async def main():

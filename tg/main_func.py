@@ -1,33 +1,27 @@
+import asyncio
+import os
 import time
 from datetime import datetime, timezone
+
 from dateutil.relativedelta import relativedelta
-
-
-
-import os
-import asyncio
 from dotenv import load_dotenv
-
-
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
+from aiogram.types import Message
 
-from sqlalchemy.ext.declarative import declarative_base
-
+from code.api.account import get_wallet_balance
+from code.api.trade import set_lev_for_all_linears
+from code.db.alerts import AlertsOperations
+from code.db.pairs import LinearPairsOperations, SpotPairsOperations
+from code.db.pnl import PNLManager
 from code.db.signals import SignalsOperations
+from code.db.subscriptions import SubscriptionsOperations
+from code.db.tg_channels import TgChannelsOperations
 from code.db.users import UsersOperations
 from code.tg.keyboards import Keyboards
-from code.db.subscriptions import SubscriptionsOperations
-from code.db.pnl import PNLManager
-from code.db.tg_channels import TgChannelsOperations
-from code.db.pairs import LinearPairsOperations, SpotPairsOperations
-
-from code.api.account import find_usdt_budget, get_wallet_balance
-from code.api.trade import set_lev_for_all_linears
 
 
 load_dotenv()
@@ -41,6 +35,7 @@ DATABASE_URL = os.getenv('database_url')
 db_users_op = UsersOperations(DATABASE_URL)
 db_spot_pairs = SpotPairsOperations(DATABASE_URL)
 db_linear_pairs = LinearPairsOperations(DATABASE_URL)
+alerts_ops = AlertsOperations(DATABASE_URL)
 
 
 ADMIN_ID = os.getenv('owner_id')
@@ -109,29 +104,104 @@ async def channel_message_handler(message: Message):
         print('Не удалось обработать сигнал')
 
 
+# ####### АЛЕРТЫ ЮЗЕРАМ - ПОДПИСКА/КЛЮЧИ ########
+#            ############
+#               #####
+async def regular():
+    while True:
+
+        #checking_api_keys - for debug only
+        # users = await db_users_op.get_all_users_data()
+        # if not users.empty:
+        #     for index, row in users.iterrows():
+        #         if row['trade_type'] == 'demo':
+        #             res = await get_wallet_balance(row['telegram_id'], demo=True, coin=None)
+        #             if res == -1:
+        #                 await alerts_ops.upsert_alerts({
+        #                     'type': 'api_demo',
+        #                     'telegram_id': row['telegram_id']})
+        #         else:
+        #             res = await get_wallet_balance(row['telegram_id'], demo=None, coin=None)
+        #             if res == -1:
+        #                 await alerts_ops.upsert_alerts({
+        #                     'type': 'api_real',
+        #                     'telegram_id': row['telegram_id']})
+        #         await asyncio.sleep(5)
+
+
+
+        # находим юзеров с истекающей подпиской
+        res = await db_users_op.get_users_with_short_subscription()
+        if res:
+            for element in res:
+                await alerts_ops.upsert_alerts({
+                    'type': 'subscription',
+                    'telegram_id': element.get('telegram_id')})
+
+        # Получаем алерты, по которым не было уведомления
+        # Делаем рассылку по юзерам
+        alerts_new = await alerts_ops.get_unnotified_alerts()
+        if alerts_new:
+            for element in alerts_new:
+                try:
+                    telegram_id = element.get('telegram_id')
+                    params = await get_user_settings(telegram_id)
+                    if element.get('type') == 'subscription':
+                        await bot.send_message(
+                            chat_id=telegram_id,
+                            text='<b>🔴  Ваша подписка истекает менее чем через сутки!</b>'
+                                 '\n\n🔴 Чтобы продолжить торговлю необходимо продлить подписку',
+                            reply_markup=await kbd.buy_subscription(params)
+                            )
+                        await alerts_ops.upsert_alerts({
+                            'alert_id': element.get('alert_id'),
+                            'telegram_id': element.get('telegram_id'),
+                            'type': element.get('type'),
+                            'notified': True})
+
+                    if element.get('type') == 'api_real':
+                        await bot.send_message(
+                            chat_id=telegram_id,
+                            text='<b>🔴  Ваши Апи ключи для торговли недействительны!</b>'
+                                 '\n\n🔴 Чтобы продолжить торговлю необходимо обновить Апи ключи',
+                            reply_markup=await kbd.main_menu(params)
+                            )
+                        await alerts_ops.upsert_alerts({
+                            'alert_id': element.get('alert_id'),
+                            'telegram_id': element.get('telegram_id'),
+                            'type': element.get('type'),
+                            'notified': True})
+
+                    if element.get('type') == 'api_demo':
+                        await bot.send_message(
+                            chat_id=telegram_id,
+                            text='<b>🔴  Ваши Апи ключи для демо торговли недействительны!</b>'
+                                 '\n\n🔴 Чтобы продолжить торговлю необходимо обновить Апи ключи',
+                            reply_markup=await kbd.main_menu(params)
+                            )
+                        await alerts_ops.upsert_alerts({
+                            'alert_id': element.get('alert_id'),
+                            'telegram_id': element.get('telegram_id'),
+                            'type': element.get('type'),
+                            'notified': True})
+
+                    # удаляем старые алерты
+                    await alerts_ops.delete_old_alerts()
+                except Exception as e:
+                    print("Произошла ошибка при обработке алертов:", e)
+
+        await asyncio.sleep(120)
+
+
 # ####### ADMIN ########
 #     ############
 #        #####
-
-
-# Стартовая функция, отправляет сообщение администратору при запуске бота
-async def on_startup():
-    await bot.send_message(
-        chat_id=ADMIN_ID,
-        text='<b>Торговый бот был запущен!</b>',
-        # reply_markup=kbd.single_btn_back_to_main_menu
-        reply_markup=await kbd.admin_menu()
-        )
-
 
 @dp.callback_query(F.data == 'admin_menu')
 async def start_admin_menu(callback_query):
 
     telegram_id = callback_query.from_user.id
-    print(telegram_id )
-    print(ADMIN_ID)
     params = await get_user_settings(telegram_id)
-    # print(params)
     if telegram_id != int(ADMIN_ID):
         await bot.send_message(
             chat_id=telegram_id,
@@ -218,7 +288,6 @@ async def handle_new_channel_message(message: types.Message):
             reply_markup=await kbd.admin_menu()
         )
     except Exception as e:
-        print(e)
         await bot.send_message(
             chat_id=telegram_id,
             text="Данный канал не может быть добавлен, возможные причины:"
@@ -244,7 +313,6 @@ async def show_channels(callback_query):
     text = await ch_op.get_all_channels()
 
     text = '🟢 Список усредняющих каналов:\n\n' + ' \n\n'.join(text)
-    print(text)
 
     await bot.send_message(
         chat_id=telegram_id,
@@ -338,9 +406,6 @@ async def show_users(callback_query):
         text_one = '🛑 Показать пользователей без подписки:'
         res = await db_users.get_inactive_users()
 
-    print('res', res)
-    # res = '\n\n'.join(
-    #     f"{index + 1}. {item['username']} {item['telegram_id']}" for index, item in enumerate(res))
     res = '\n\n'.join(
         f"{index + 1}. {item['username']} {item['telegram_id']}"
         f"\n Подписка до: {datetime.fromtimestamp(item['subscription']).strftime('%d-%m-%Y %H:%M')}"
@@ -403,7 +468,6 @@ async def handle_delete_user(message: types.Message):
 #        #####
 
 
-
 # ####### ВКЛ ВЫКЛ ТОРГОВЛИ (юзер) ########
 #             ############
 #               #####
@@ -446,14 +510,12 @@ async def stop_trade_confirmed(message):
     telegram_id = message.from_user.id
     para = await get_user_settings(telegram_id)
     status = para.get('stop_trading')
-    # print(status)
 
     if not status:
         text = 'Торговля успешно отключена\n\n🟢 Управление торговлей'
         fields = {
             'stop_trading': True
         }
-        # print('Otkluchaem torgovlu')
 
     else:
         text = ('🟢 Торговля успешно включена'
@@ -462,14 +524,12 @@ async def stop_trade_confirmed(message):
         fields = {
             'stop_trading': False
         }
-        # print('Vkluchaem torgovlu')
     try:
         await db_users_op.update_user_fields(telegram_id, fields)
-#### здесь выдаем параметры на подверждение
+
     except Exception as e:
         text = 'Сейчас невозможно изменить параметры, попробуйте позднее'
 
-#### здесь выдаем параметры на подверждение
     para = await get_user_settings(telegram_id)
     await bot.send_message(
         chat_id=telegram_id,
@@ -516,7 +576,6 @@ async def handle_api_key_message(message: types.Message):
     ##### проверка работоспособности ключей через запрос баланса
     check = await get_wallet_balance(telegram_id)
     if check == -1:
-        print('invalid keys')
         await user_op.update_user_fields(telegram_id, {'main_secret_key': None})
         await bot.send_message(
             chat_id=telegram_id,
@@ -613,7 +672,6 @@ async def handle_api_key_message(message: types.Message):
     ##### проверка работоспособности ключей через запрос баланса
     check = await get_wallet_balance(telegram_id, demo=True)
     if check == -1:
-        print('invalid keys')
         await user_op.update_user_fields(telegram_id, {'demo_secret_key': None})
         await bot.send_message(
             chat_id=telegram_id,
@@ -642,7 +700,6 @@ async def stop_demo_confirmed(message):
     telegram_id = message.from_user.id
     para = await get_user_settings(telegram_id)
     status = para.get('trade_type')
-    # print(status)
 
     if status == 'demo':
         text = 'Демо-режим успешно отключен\n\n🟢 Управление торговлей'
@@ -677,7 +734,6 @@ async def get_pnl(message):
     para = await get_user_settings(telegram_id)
     pnl_op = PNLManager(DATABASE_URL)
     pnl = await pnl_op.calculate_percentage_difference(user_id=telegram_id)
-    # print(pnl)
     default = ('💰 Недостаточно данных'
                '\n\n ⚡ Похоже вы недавно начали использование нашей торговой системы'
                '\n\n ⚡ Для минимального расчета торговый робот должен проработать больше суток')
@@ -700,7 +756,7 @@ async def get_pnl(message):
                 f'\n\n ⚡ расчет осуществляется по времени биржи, то есть UTC'
                 f'\n\n ⚡⚡ для расчета принимаются закончившиеся сутки'
                 f'\n\n ⚡⚡⚡ если вы вводили или выводили средства на торговый акканут, это искажает расчет.'
-                f'\n\n ⚡⚡⚡ при ввыоде/выводе рекомендуем обнулить расчет и начать его с новго периода.')
+                f'\n\n ⚡⚡⚡ при выводе/выводе рекомендуем обнулить расчет и начать его с новго периода.')
 
 
     await bot.send_message(
@@ -729,7 +785,6 @@ async def start(message: types.Message):
         subscriptions_op = SubscriptionsOperations(DATABASE_URL)
         params = await subscriptions_op.get_all_subscriptions_data()
         params['new_user_id'] = telegram_id
-        # print(params)
         await bot.send_message(
             chat_id=telegram_id,
             text=f' 🔒🔒🔒\n\nВы не являетесь зарегистрированным пользователем \n\n🔑🔑🔑'
@@ -764,7 +819,6 @@ async def mange_subscription(callback_query):
     params = await subscriptions_op.get_all_subscriptions_data()
     params['new_user_id'] = telegram_id
     user_subs = (await get_user_settings(telegram_id)).get('subscription')
-    # print(user_subs)
 
     user_subs = datetime.fromtimestamp(user_subs, tz=timezone.utc)
     current_datetime = datetime.now(timezone.utc)
@@ -774,7 +828,6 @@ async def mange_subscription(callback_query):
 
     # Вычисление разницы в днях
     days = delta.days
-    # print(days)
     if days >= 0:
         txt = f'До окончания действия подписки осталось дней {days}'
     else:
@@ -807,7 +860,6 @@ async def handle_subscription(callback_query):
         'id': telegram_id
     }
 
-    # print(params)
     await bot.send_message(
         chat_id=telegram_id,
         text=f'🟢 Инструкция по оплате'
@@ -857,7 +909,7 @@ async def confirm_subscription(callback_query):
         'subs': subs,
         'user_id': telegram_id,
     }
-    #print(params)
+
     await bot.send_message(
         chat_id=telegram_id,
         text='Проверяем оплату, обычно это занимает несколько минут.'
@@ -952,7 +1004,6 @@ async def settings(message: types.Message):
 async def open_settings(message: types.Message):
     telegram_id = message.from_user.id
     params = await get_user_settings(int(telegram_id))
-    # print(params)
     await bot.send_message(
         chat_id=telegram_id,
         text=(f'🔐 Для получения описания или изменения настройки нажмите нужную кнопку'),
@@ -964,7 +1015,6 @@ async def open_settings(message: types.Message):
 async def open_settings(message: types.Message):
     telegram_id = message.from_user.id
     params = await get_user_settings(int(telegram_id))
-    # print(params)
     await bot.send_message(
         chat_id=telegram_id,
         text=(f'🟢 Здесь вы можете выбрать список торгуемых монет, а также '
@@ -1064,7 +1114,6 @@ async def add_coin(message: types.Message):
         current_list = params.get('trading_pairs')
         if "-1" in params.get('trading_pairs'):
             current_list = []
-        print(spot, linear)
         if not spot and not linear:
             text=("🔴 Этой монеты нет в списке торгуемых на биржею"
                   "\n\n Проверьте верность написания символа")
@@ -1076,7 +1125,6 @@ async def add_coin(message: types.Message):
     except Exception as e:
         text = '🔴  Сейчас невозможно изменить параметры, попробуйте позднее'
     params = await get_user_settings(int(telegram_id))
-    print(params)
     await bot.send_message(
         chat_id=telegram_id,
         text=text,
@@ -1111,7 +1159,6 @@ async def add_coin(message: types.Message):
         text = text_1
 
     params = await get_user_settings(int(telegram_id))
-    print(params)
     await bot.send_message(
         chat_id=telegram_id,
         text=text,
@@ -1128,7 +1175,7 @@ async def change_setting(callback_query):
     para = None
     text = 'необработанный вызов'
 
-    if  action == 'settings_spot':
+    if action == 'settings_spot':
         setting = params.get(action[9:])
         para = action
         if setting:
@@ -1143,7 +1190,6 @@ async def change_setting(callback_query):
 
 
     if  action == 'settings_averaging':
-        print(action)
         para = action
         setting = params.get(action[9:])
         if setting:
@@ -1158,7 +1204,6 @@ async def change_setting(callback_query):
 
     #if action == 'settings_isolated_margin':
     if action == 'settings_trade_pair_if':
-        print(action)
         para = action
         setting = params.get(action[9:])
         if setting == 1:
@@ -1174,7 +1219,6 @@ async def change_setting(callback_query):
 
 
     if  action == 'settings_min_trade':
-        print(action)
         text = ('🟢 Начальный размер позиции определяет на какую сумму будут приобретаться монеты (спот) или открываться позиция (фьючерс).'
                 '\n\nРеальный размер позиции может незначительно отличаться от текущей настройки, это вязано с проскальзываниями и настройками монет.'
                 '\n\n🔑  Если вы хотите изменить настройку Минимальный размер'
@@ -1186,8 +1230,7 @@ async def change_setting(callback_query):
                 '(на каждую монету или фьючерс установлены ограничения по минимальной сумме торговли)'
     )
 
-    if  action == 'settings_max_trade':
-        print(action)
+    if action == 'settings_max_trade':
         text = ('🟢 Максимальный размер позиции определяет максимальную сумму, на которую могут приобретаться монеты (спот) или открываться позиция (фьючерс) с учетом укрупнений.'
                 '\n\n🔑  Если вы хотите изменить настройку Максимальный размер позиции'
                 '\nотправьте следующим сообщением фразу'
@@ -1196,8 +1239,7 @@ async def change_setting(callback_query):
                 '\nМаксимальный размер 500')
 
 
-    if  action == 'settings_averaging_size':
-        print(action)
+    if action == 'settings_averaging_size':
         text = ('🟢 Шаг укрупнения'
                 '\n\nОпределяет насколько будет укрупняться позиция (кличество монет в торговле) при получении сигнала на укрупнение'
                 '\n\n Доступные значения от 1.1 (на 10%) до 5 (на 500)'
@@ -1207,8 +1249,7 @@ async def change_setting(callback_query):
                 '\n\n🟢 ПРИМЕР:'
                 '\nШаг укрупнения 1.5')
 
-    if  action == 'settings_averaging_step':
-        print(action)
+    if action == 'settings_averaging_step':
         text = ('🟢 Условия укрупнения'
                 '\n\nУкрупнение осуществляется только при условии, что цена сдвинулась против позиции (например, если открыт лонг - цена снижается)'
                 '\n\n Настройка условия укрупнения определяет насколько в % должна измениться цена, чтобы состоялось укрупнение'
@@ -1220,8 +1261,7 @@ async def change_setting(callback_query):
                 '\n\n🟢 ПРИМЕР:'
                 '\nУсловия укрупнения 7%')
 
-    if  action == 'settings_tp_min':
-        print(action)
+    if action == 'settings_tp_min':
         text = ('🟢 Условия открытия тейк-профита при движении цены в нужном направлении'
                 '\n\nЦена должна измениться на указанный размер и только после этого выставляется ордер тейк-профит'
                 '\n\n Доступные значения от 0.5% до 20%'
@@ -1232,8 +1272,7 @@ async def change_setting(callback_query):
                 '\nТейк профит 2%')
 
 
-    if  action == 'settings_tp_step':
-        print(action)
+    if action == 'settings_tp_step':
         text = ('🟢 Торговый робот использует скользящий тейк профит, текущая настройка устанавливает на каком расстоянии за ценой двигается тейк профит'
                 '\n\nЕсли цена продолжает двигаться в нужном направлении (например, продолжает расти при лонге), то тейк-профит продолжает двигаться за ценой на расстоянии, определенном текущей настройкой'
                 '\n\n🔑  Если вы хотите изменить текущую настройку отправьте следующим сообщением слово'
@@ -1242,8 +1281,7 @@ async def change_setting(callback_query):
                 '\nСледуем 0.9%')
 
 
-    if  action == 'settings_max_leverage':
-        print(action)
+    if action == 'settings_max_leverage':
         text = ('🟢 Размер плеча, используемый при торговле фьючерсами'
                 '\n\n🔑  Если вы хотите изменить текущую настройку отправьте следующим сообщением фразу'
                 '\n\nПлечо и целое число от 1 до 10, где 1 означает что плечо не применяется'
@@ -1268,11 +1306,9 @@ async def change_setting(callback_query):
 
 @dp.callback_query(F.data.startswith('yes_settings_'))
 async def confirm_change(callback_query):
-    print('Мы в confirm_change')
     telegram_id = callback_query.from_user.id
-    db_users = UsersOperations(DATABASE_URL)
+    # db_users = UsersOperations(DATABASE_URL)
     params = await get_user_settings(int(telegram_id))
-    print(params)
     action = callback_query.data[13:]
     text_1 = "🟢  Изменения применены!"
     text_2 = '🔴  Сейчас невозможно изменить параметры (возможно вы просто еще не отправили боту API ключи), попробуйте позднее'
@@ -1406,7 +1442,6 @@ async def handle_api_key_message(message: types.Message):
         text = '🔴  Сейчас невозможно изменить параметры, попробуйте позднее'
 
     params = await get_user_settings(int(telegram_id))
-    print(params)
     await bot.send_message(
         chat_id=telegram_id,
         text=text,
@@ -1426,7 +1461,6 @@ async def handle_api_key_message(message: types.Message):
         text = '🔴  Сейчас невозможно изменить параметры, попробуйте позднее'
 
     params = await get_user_settings(int(telegram_id))
-    print(params)
     await bot.send_message(
         chat_id=telegram_id,
         text=text,
@@ -1451,7 +1485,6 @@ async def handle_api_key_message(message: types.Message):
         text = '🔴  Сейчас невозможно изменить параметры, попробуйте позднее'
 
     params = await get_user_settings(int(telegram_id))
-    print(params)
     await bot.send_message(
         chat_id=telegram_id,
         text=text,
@@ -1478,7 +1511,6 @@ async def handle_api_key_message(message: types.Message):
         text = '🔴  Сейчас невозможно изменить параметры, попробуйте позднее'
 
     params = await get_user_settings(int(telegram_id))
-    print(params)
     await bot.send_message(
         chat_id=telegram_id,
         text=text,
@@ -1503,7 +1535,6 @@ async def handle_api_key_message(message: types.Message):
         text = '🔴  Сейчас невозможно изменить параметры, попробуйте позднее'
 
     params = await get_user_settings(int(telegram_id))
-    print(params)
     await bot.send_message(
         chat_id=telegram_id,
         text=text,
@@ -1531,7 +1562,6 @@ async def handle_api_key_message(message: types.Message):
         text = '🔴  Сейчас невозможно изменить параметры, попробуйте позднее'
 
     params = await get_user_settings(int(telegram_id))
-    print(params)
     await bot.send_message(
         chat_id=telegram_id,
         text=text,
@@ -1591,7 +1621,6 @@ async def handle_leverage_message(message: types.Message):
     except:
         text = '🔴  Сейчас невозможно изменить параметры, попробуйте позднее'
         params = await get_user_settings(int(telegram_id))
-        print(params)
         await bot.send_message(
             chat_id=telegram_id,
             text=text,
@@ -1602,14 +1631,12 @@ async def handle_leverage_message(message: types.Message):
         await set_lev_for_all_linears(telegram_id, result, demo=True, batch_size=8, delay=1)
         text = "🟢  Изменения применены для основного и демо-акканута!"
         params = await get_user_settings(int(telegram_id))
-        print(params)
         await bot.send_message(
             chat_id=telegram_id,
             text=text,
             reply_markup=await kbd.show_settings()
         )
     except Exception as e:
-        print(e)
         text = ("🟢  Изменения применены только для основного акканута!"
                   "\n\n🔴 Настройки плечей для демо-акканута не могут быть применены, возможно,"
                   "\n вы не вносили API ключи для демо-акканута или они некорректны"
@@ -1619,7 +1646,6 @@ async def handle_leverage_message(message: types.Message):
                   "\nи нужно попробовать установить плечи позднее")
 
         params = await get_user_settings(int(telegram_id))
-        print(params)
         await bot.send_message(
             chat_id=telegram_id,
             text=text,
@@ -1644,31 +1670,20 @@ async def handle_api_key_message(message: types.Message):
 
 
 
-
-
-
-
-
 #  ####### ЗАПУСК БОТА ########
 #             ############
 #               #####
 
-# async def start_bot():
-#
-#     await bot.delete_webhook(drop_pending_updates=True)
-#     # dp.startup.register(on_startup)
-#     try:
-#         await dp.start_polling(bot)
-#     finally:
-#         await bot.session.close()
 
 async def start_bot():
     await bot.delete_webhook(drop_pending_updates=False)
+    startup_task = asyncio.create_task(regular())
+
     try:
         await dp.start_polling(bot, polling_timeout=1)
     finally:
         await bot.session.close()
-
+    await startup_task
 
 if __name__ == '__main__':
     asyncio.run(start_bot())

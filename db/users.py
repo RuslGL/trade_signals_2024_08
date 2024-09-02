@@ -12,8 +12,8 @@ from sqlalchemy import JSON
 import pandas as pd
 from typing import Optional
 
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy.exc import NoResultFound
 
 
 # Загрузка переменных окружения из .env файла
@@ -207,6 +207,31 @@ class UsersOperations:
                 # if result_delete.rowcount == 0:
                 #     raise UserNotFoundError(f"User with telegram_id {telegram_id} does not exist.")
 
+    async def get_users_with_short_subscription(self) -> List[Dict[str, Optional[str]]]:
+        async with self.async_session() as session:
+            async with session.begin():
+                # Текущая дата и время
+                current_time = datetime.now(timezone.utc)
+
+                # Вычисление времени, соответствующего текущему времени + 1 день
+                one_day_later = current_time + timedelta(days=1)
+
+                # Запрос для получения всех пользователей, у которых подписка истекает в течение следующего дня и подписка больше нуля
+                query = select(Users.telegram_id, Users.username, Users.subscription).where(
+                    (Users.subscription.isnot(None)) &
+                    (Users.subscription > 0) &
+                    (func.to_timestamp(Users.subscription) > current_time) &
+                    (func.to_timestamp(Users.subscription) <= one_day_later)
+                )
+                result = await session.execute(query)
+                users = result.fetchall()
+
+                # Преобразование результатов в список словарей
+                return [{
+                    'telegram_id': user.telegram_id,
+                    'username': user.username or 'N/A',
+                    'subscription': user.subscription
+                } for user in users]
 
 if __name__ == '__main__':
     async def main():

@@ -25,6 +25,7 @@ from db.signals import SignalsOperations
 from db.pnl import PNLManager
 from db.positions import PositionsOperations
 from db.newcoins import NewPairsOperations
+from db.alerts import AlertsOperations
 
 from api.market import process_spot_linear_settings, get_prices
 from api.account import get_wallet_balance, find_usdt_budget, get_user_orders, get_user_positions
@@ -34,7 +35,6 @@ from api.trade import (universal_spot_conditional_limit_order, unuversal_linear_
                        universal_spot_conditional_market_order)
 
 
-# from daily import daily_task
 
 
 from tg.main_func import start_bot
@@ -833,9 +833,6 @@ async def tp_execution(database_url, price_queue):
                 }))
 
             if closed_positions_no_tp.empty:
-                # print('No fresh positions closed')
-                #await asyncio.sleep(1)
-                # continue
                 pass
             else:
                 spot_prices, linear_prices = price_queue.get()
@@ -1075,18 +1072,13 @@ async def tp_execution(database_url, price_queue):
 
         except Exception as e:
             print(f"Ошибка в процессе find trailing tp: {e}")
-
             await asyncio.sleep(1)
             #                    #####
             #                ############
             # ####### STOP CHECK TRAIL TP CONDITION ########
 
 
-
-            # traceback.print_exc()
-            await asyncio.sleep(1)  # Задержка при ошибке
-
-        await asyncio.sleep(10)
+        await asyncio.sleep(1)
 
 def run_tp_execution_process(price_queue):
     asyncio.run(tp_execution(DATABASE_URL,price_queue))
@@ -1180,14 +1172,9 @@ async def daily_task():
                                 # print( telegram_id, 'set_db - 1', set_db)
                                 # print(telegram_id, 'set_api - 1', set_api)
                             #
-                            # # Найдем элементы, которые есть в базе данных, но отсутствуют как открытые в API
                             not_in_api = list(set_db - set_api)
-                            #print('Позиции которых нет среди открытых в апи - нужно закрыть в бд', not_in_api)
                             for position in not_in_api:
-                                # r = user_open_pos_from_db[user_open_pos_from_db['symbol'] == position]['bybit_id'].iloc[0]
-                                # print('r', r)
                                 to_change = user_open_pos_from_db[user_open_pos_from_db['symbol'] == position]['bybit_id'].iloc[0]
-                                # print('id izmenit', to_change)
                                 await positions_op.upsert_position({
                                     'bybit_id': to_change,
                                     'finished': True,
@@ -1218,7 +1205,6 @@ async def daily_task():
                                         'cumExecQty': element.get('size'),
                                         'cumExecFee': str(float(element.get('size')) * 0.001),
                                     }
-                                    # print('vnesti v BD', pos_data)
                                     await positions_op.upsert_position(pos_data)
 
                             for element in main_res:
@@ -1313,10 +1299,13 @@ async def daily_task():
 
 #############
             # Выполняем основную задачу в полночь
-            print('Выполняется основная задача по обновлению PNL в 00:00:00')
+            print('Выполняется основная задача по обновлению PNL, получению новых монет, проверка апи ключей в 00:00:00')
 
             pnl_op = PNLManager(DATABASE_URL)
             users_op = UsersOperations(DATABASE_URL)
+            new_pairs_op = NewPairsOperations(DATABASE_URL)
+            alerts_ops = AlertsOperations(DATABASE_URL)
+
             users = await users_op.get_all_users_data()
 
             valid_users = []
@@ -1327,7 +1316,7 @@ async def daily_task():
             except Exception as e:
                 print("Произошла ошибка при обработке пользователей:", e)
                 print("Спорная переменная:", user)
-                raise
+
 
             result = []
             for user_id in valid_users:
@@ -1340,7 +1329,30 @@ async def daily_task():
 
             for entry in result:
                 await pnl_op.add_pnl_entry(entry)
-            await asyncio.sleep(10)
+
+            await new_pairs_op.insert_new_pairs()
+
+            # checking_api_keys
+            try:
+                if not users.empty:
+                    for index, row in users.iterrows():
+                        if row['trade_type'] == 'demo':
+                            res = await get_wallet_balance(row['telegram_id'], demo=True, coin=None)
+                            if res == -1:
+                                await alerts_ops.upsert_alerts({
+                                    'type': 'api_demo',
+                                    'telegram_id': row['telegram_id']})
+                        else:
+                            res = await get_wallet_balance(row['telegram_id'], demo=None, coin=None)
+                            if res == -1:
+                                await alerts_ops.upsert_alerts({
+                                    'type': 'api_real',
+                                    'telegram_id': row['telegram_id']})
+                        await asyncio.sleep(5)
+            except Exception as e:
+                print("Произошла ошибка при ежедневной проверке ключей:", e)
+
+
         except Exception as e:
             print(f"Ошибка в блоке ежедневных задач daily tasks{e}")
 

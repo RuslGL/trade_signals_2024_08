@@ -236,28 +236,6 @@ async def set_lev_linears(telegram_id, symbol, leverage, demo=False):
         return -1
 
 
-    # async def set_lev_for_all_linears(telegram_id, leverage, demo=True, batch_size=8, delay=1):
-    # db_linear_pairs = LinearPairsOperations(DATABASE_URL)
-    # data = await db_linear_pairs.get_all_linear_pairs_data()
-    # symbols = [entry['name'] for entry in data.values()]
-    #
-    # failed_symbols = []  # Список для символов с ошибками
-    #
-    # for i in range(0, len(symbols), batch_size):
-    #     batch = symbols[i:i + batch_size]
-    #     tasks = [set_lev_linears(telegram_id, symbol, leverage, demo) for symbol in batch]
-    #     results = await asyncio.gather(*tasks)
-    #
-    #     # Проверка результатов и добавление символов с ошибками
-    #     for symbol, result in zip(batch, results):
-    #         if result == -1:
-    #             failed_symbols.append(symbol)
-    #     print('Обновлены 8 символов, failed =', failed_symbols)
-    #     await asyncio.sleep(delay)
-    # print('finished')
-    # return failed_symbols
-
-
 async def set_lev_for_all_linears(telegram_id, leverage, demo=True, batch_size=8, delay=1.1):
     db_linear_pairs = LinearPairsOperations(DATABASE_URL)
     data = await db_linear_pairs.get_all_linear_pairs_data()
@@ -293,7 +271,6 @@ async def set_lev_for_all_linears_demo_plus_main(telegram_id, leverage):
         return True
     except:
         return False
-
 
 
 

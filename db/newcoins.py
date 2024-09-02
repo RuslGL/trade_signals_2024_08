@@ -89,8 +89,10 @@ if __name__ == '__main__':
 
     async def main_assync():
         new_pairs_op = NewPairsOperations(DATABASE_URL)
-        new = await new_pairs_op.get_all_names()
-        print(new)
+        #new = await new_pairs_op.get_all_names()
+        ups = await new_pairs_op.insert_new_pairs()
+
+        print(ups)
 
     asyncio.run(main_assync())
 
