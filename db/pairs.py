@@ -300,6 +300,14 @@ class LinearPairsOperations:
                 }
 
         return data
+    async def get_all_linear_names(self) -> List[str]:
+        async with self.async_session() as session:
+            result = await session.execute(
+                text("SELECT name FROM linear_pairs")
+            )
+            # Извлекаем поле name из каждого кортежа
+            names = [row[0] for row in result]
+            return names
 
 
 if __name__ == '__main__':

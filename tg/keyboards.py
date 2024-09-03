@@ -119,6 +119,11 @@ class Keyboards:
         )
 
         btn_5 = InlineKeyboardButton(
+            text='Обновить API ключи',
+            callback_data='change_api'
+        )
+
+        btn_6 = InlineKeyboardButton(
             text='Управлять подпиской',
             callback_data='manage_subscription'
         )
@@ -126,7 +131,7 @@ class Keyboards:
 
         our_menu = [[btn_1, btn_2],
                     [btn_3, btn_4],
-                    [btn_5],]
+                    [btn_5, btn_6],]
 
 
         # Проверка на админские права и добавление кнопки
@@ -263,6 +268,24 @@ class Keyboards:
             ]
             return InlineKeyboardMarkup(inline_keyboard=our_menu)
 
+# ####### ОБНУЛИТЬ РАСЧЕТ PNL (юзер) ########
+#             ############
+#               #####
+
+    async def clean_pnl(self,):
+            btn_1 = InlineKeyboardButton(
+                 text="Обнулить расчет PNL",
+                 callback_data='clean_pnl',
+            )
+            btn_2 = InlineKeyboardButton(
+                text='Главное меню',
+                callback_data='main_menu'
+            )
+            our_menu = [
+                [btn_1,],
+                [btn_2],
+            ]
+            return InlineKeyboardMarkup(inline_keyboard=our_menu)
 
 # ####### НАСТРОЙКИ ТОРГОВЛИ ########
 #             ############

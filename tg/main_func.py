@@ -110,23 +110,6 @@ async def channel_message_handler(message: Message):
 async def regular():
     while True:
 
-        #checking_api_keys - for debug only
-        # users = await db_users_op.get_all_users_data()
-        # if not users.empty:
-        #     for index, row in users.iterrows():
-        #         if row['trade_type'] == 'demo':
-        #             res = await get_wallet_balance(row['telegram_id'], demo=True, coin=None)
-        #             if res == -1:
-        #                 await alerts_ops.upsert_alerts({
-        #                     'type': 'api_demo',
-        #                     'telegram_id': row['telegram_id']})
-        #         else:
-        #             res = await get_wallet_balance(row['telegram_id'], demo=None, coin=None)
-        #             if res == -1:
-        #                 await alerts_ops.upsert_alerts({
-        #                     'type': 'api_real',
-        #                     'telegram_id': row['telegram_id']})
-        #         await asyncio.sleep(5)
 
 
 
@@ -542,6 +525,31 @@ async def stop_trade_confirmed(message):
 #             ############
 #               #####
 
+@dp.callback_query(F.data == 'change_api')
+async def change_api(message):
+    telegram_id = message.from_user.id
+    params = await get_user_settings(telegram_id)
+    await bot.send_message(
+        chat_id=telegram_id,
+        text="🛑🛑🛑"
+             "\nВы вошли в раздел смены API ключей"
+             "\n\n🔐🔐🔐"
+             "\n🔑🔑🔑Если вы хотите изменить/внести ключи для РЕАЛЬНОЙ торговли"
+             "\n📌📌📌 Отправьте следующим сообщением API key"
+             "\n<b>Сообщение начните фразой api key</b>"
+             "\n\nПРИМЕР:"
+             "\napi key rtyvuA8WFFgjyuHv25"
+             "\n\n\n🔑🔑🔑Если вы хотите изменить/внести ключи для DEMO торговли"
+             "\n\n🔐🔐🔐"
+             "\nОтправьте следующим сообщением Аpi key для демо-аккаунта"
+             "\n\n 📌📌📌"
+             "\n<b>Сообщение начните фразой \ndemo api key</b>"
+             "\n"
+             "\n\nПРИМЕР:"
+             "\ndemo api key rtyvuA8WFFgjyuHv25",
+    )
+
+
 # main
 @dp.message(F.text.lower().startswith('api key'))
 async def handle_api_key_message(message: types.Message):
@@ -557,7 +565,7 @@ async def handle_api_key_message(message: types.Message):
              "\n\n🔐🔐🔐"
              "\nОтправьте следующим сообщением SECRET KEY"
              "\n\n 📌📌📌"
-             "\n<b>Сообщение начните фразой secret key</b>,"
+             "\n<b>Сообщение начните фразой secret key</b>"
              "\n🔴🔴🔴"
              "\n\nПРИМЕР:"
              "\nsecret key rtyvuA8WFFgjyuHv25rtyvuA8WFFgjyuHv25rtyvuA8WFFgjyuHv25"
@@ -624,7 +632,7 @@ async def stop_demo_confirmation(message: types.Message):
                      "\n\n🔐🔐🔐"
                      "\nОтправьте следующим сообщением Аpi key для демо-аккаунта"
                      "\n\n 📌📌📌"
-                     "\n<b>Сообщение начните фразой \ndemo api key</b>,"
+                     "\n<b>Сообщение начните фразой \ndemo api key</b>"
                      "\n"
                      "\n\nПРИМЕР:"
                      "\ndemo api key rtyvuA8WFFgjyuHv25"
@@ -756,17 +764,34 @@ async def get_pnl(message):
                 f'\n\n ⚡ расчет осуществляется по времени биржи, то есть UTC'
                 f'\n\n ⚡⚡ для расчета принимаются закончившиеся сутки'
                 f'\n\n ⚡⚡⚡ если вы вводили или выводили средства на торговый акканут, это искажает расчет.'
-                f'\n\n ⚡⚡⚡ при выводе/выводе рекомендуем обнулить расчет и начать его с новго периода.')
+                f'\n\n ⚡⚡⚡ при выводе/выводе рекомендуем обнулить расчет и начать его с нового периода.')
 
+
+    await bot.send_message(
+        chat_id=telegram_id,
+        text=text,
+        reply_markup=await kbd.clean_pnl()
+        )
+
+
+@dp.callback_query(F.data == 'clean_pnl')
+async def stop_demo_confirmed(message):
+    telegram_id = message.from_user.id
+    para = await get_user_settings(telegram_id)
+    try:
+        pnl_op = PNLManager(DATABASE_URL)
+        await pnl_op.delete_entries_by_user_id(telegram_id)
+        text = (f"🟢 данные по PNL за прошлые периоды успешно удалены"
+                f"\n\nНачиная с текущего момента расчет будет осуществляться заново")
+    except:
+        text = ("🔴 В настоящий момент невозмонжо удалить данные по PNL за прошлые периоды"
+                "\n\n🔴 это может быть связано с проблемами BYBIT или ваших API ключей")
 
     await bot.send_message(
         chat_id=telegram_id,
         text=text,
         reply_markup=await kbd.main_menu(para)
         )
-
-
-
 
 #  ####### ГЛАВНОЕ МЕНЮ ########
 #             ############
@@ -1469,7 +1494,7 @@ async def handle_api_key_message(message: types.Message):
 
 # Шаг укрупнения
 @dp.message(F.text.lower().startswith('шаг укрупнения'))
-async def handle_api_key_message(message: types.Message):
+async def handle_averaging_step(message: types.Message):
     telegram_id = message.from_user.id
     result = str(message.text.split()[-1])
     user_op = UsersOperations(DATABASE_URL)
@@ -1493,7 +1518,7 @@ async def handle_api_key_message(message: types.Message):
 
 #условия укрупнения
 @dp.message(F.text.lower().startswith('условия укрупнения'))
-async def handle_api_key_message(message: types.Message):
+async def handle_averaging_size(message: types.Message):
     telegram_id = message.from_user.id
     result = str(message.text.split()[-1])
     user_op = UsersOperations(DATABASE_URL)
@@ -1519,7 +1544,7 @@ async def handle_api_key_message(message: types.Message):
 
 # Тейк профит
 @dp.message(F.text.lower().startswith('тейк профит'))
-async def handle_api_key_message(message: types.Message):
+async def handle_take_profit(message: types.Message):
     telegram_id = message.from_user.id
     result = str(message.text.split()[-1])
     user_op = UsersOperations(DATABASE_URL)
@@ -1546,7 +1571,7 @@ async def handle_api_key_message(message: types.Message):
 #Следуем и число от 0.1 до 2%.
 #Следуем
 @dp.message(F.text.lower().startswith('следуем'))
-async def handle_api_key_message(message: types.Message):
+async def handle_trade_if(message: types.Message):
     telegram_id = message.from_user.id
     result = str(message.text.split()[-1])
     user_op = UsersOperations(DATABASE_URL)
@@ -1657,7 +1682,7 @@ async def handle_leverage_message(message: types.Message):
 #             ############
 #               #####
 @dp.message()
-async def handle_api_key_message(message: types.Message):
+async def unknown_message(message: types.Message):
     telegram_id = message.from_user.id
     params = await get_user_settings(int(telegram_id))
     await bot.send_message(

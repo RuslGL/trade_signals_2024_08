@@ -28,11 +28,12 @@ from db.newcoins import NewPairsOperations
 from db.alerts import AlertsOperations
 
 from api.market import process_spot_linear_settings, get_prices
+
 from api.account import get_wallet_balance, find_usdt_budget, get_user_orders, get_user_positions, cancel_order_by_id, get_order_by_id
 from api.utils import calculate_purchase_volume, round_price, adjust_quantity
 from api.trade import (universal_spot_conditional_limit_order, unuversal_linear_conditional_market_order,
                        amend_spot_conditional_market_order, universal_market_order, set_tp_linears,
-                       universal_spot_conditional_market_order)
+                       universal_spot_conditional_market_order, set_lev_linears)
 
 from tg.main_func import start_bot
 import code.settings as st
@@ -1092,6 +1093,7 @@ async def daily_task():
                 # Определяем, сколько времени можно спать до следующего шага
 
                 try:
+
                     # Выполняем задачу
 
                     # ######## CHECK ALL LINEARS POSITIONS ########
@@ -1261,7 +1263,6 @@ async def daily_task():
                     # отменяем ордера, которые не исполнились в течение 300 минут
                     # находим и обрабатываем ордера, утерянные из-за сбоя api
                     try:
-
                         open_positions = await positions_op.get_positions_by_fields({"orderStatus": False,
                                                                                      "type": "main"})
                         if not open_positions.empty:
@@ -1342,12 +1343,13 @@ async def daily_task():
 
 #############
             # Выполняем основную задачу в полночь
-            print('Выполняется основная задача по обновлению PNL, получению новых монет, проверка апи ключей в 00:00:00')
+            print('Выполняется основная задача по обновлению PNL, получению новых монет, обновление сеттингов, проверка апи ключей в 00:00:00')
 
             pnl_op = PNLManager(DATABASE_URL)
             users_op = UsersOperations(DATABASE_URL)
             new_pairs_op = NewPairsOperations(DATABASE_URL)
             alerts_ops = AlertsOperations(DATABASE_URL)
+            lins_op = LinearPairsOperations(DATABASE_URL)
 
             users = await users_op.get_all_users_data()
 
@@ -1373,7 +1375,27 @@ async def daily_task():
             for entry in result:
                 await pnl_op.add_pnl_entry(entry)
 
-            await new_pairs_op.insert_new_pairs()
+
+            #### Получаем новые монеты и обновляем плечи по ним
+            try:
+                new = await new_pairs_op.insert_new_pairs()
+                old = await lins_op.get_all_linear_names()
+                difference = list(set(new) - set(old))
+                users = (await users_op.get_all_users_data())
+
+                for index, user in users.iterrows():
+                    # print(user['telegram_id'], user['main_api_key'], user['main_secret_key'], user['max_leverage'])
+                    # print(user['telegram_id'], user['demo_api_key'], user['demo_secret_key'], user['max_leverage'])
+                    for element in difference:
+                        await set_lev_linears(user['telegram_id'], element, user['max_leverage'], demo=False)
+                        await set_lev_linears(user['telegram_id'], element, user['max_leverage'], demo=True)
+                    await asyncio.sleep(1)
+
+                print("Закончили ежедневную задачу по получению новых монет и обновлению плечей")
+
+            except Exception as e:
+                print(f"Ошибка при получении новых монет и обновлении плеч{e}")
+
 
             # checking_api_keys
             try:
@@ -1395,6 +1417,21 @@ async def daily_task():
             except Exception as e:
                 print("Произошла ошибка при ежедневной проверке ключей:", e)
 
+            try:
+
+                spot_pairs_op = SpotPairsOperations(DATABASE_URL)
+                linear_pairs_op = LinearPairsOperations(DATABASE_URL)
+
+                tasks_res = await process_spot_linear_settings()
+
+                tasks = [
+                    asyncio.create_task(spot_pairs_op.insert_spot_pairs(tasks_res[0])),
+                    asyncio.create_task(linear_pairs_op.insert_linear_pairs(tasks_res[1])),
+                ]
+                await asyncio.gather(*tasks)
+
+            except Exception as e:
+                print("Произошла ошибка при ежедневном обновлении сеттингов", e)
 
         except Exception as e:
             print(f"Ошибка в блоке ежедневных задач daily tasks{e}")

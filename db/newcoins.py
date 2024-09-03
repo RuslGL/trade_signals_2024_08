@@ -78,6 +78,8 @@ class NewPairsOperations:
 
             await session.commit()
 
+            return pairs
+
 
     async def get_all_names(self) -> List[str]:
         async with self.async_session() as session:
@@ -88,11 +90,30 @@ class NewPairsOperations:
 if __name__ == '__main__':
 
     async def main_assync():
-        new_pairs_op = NewPairsOperations(DATABASE_URL)
-        #new = await new_pairs_op.get_all_names()
-        ups = await new_pairs_op.insert_new_pairs()
 
-        print(ups)
+        from code.db.pairs import LinearPairsOperations
+        from code.api.trade import set_lev_linears
+        from code.db.users import UsersOperations
+
+        new_pairs_op = NewPairsOperations(DATABASE_URL)
+        lins_op = LinearPairsOperations(DATABASE_URL)
+        from code.db.users import UsersOperations
+        users_op = UsersOperations(DATABASE_URL)
+        #new = await new_pairs_op.get_all_names()
+        new = await new_pairs_op.insert_new_pairs()
+        print(new)
+        old = await lins_op.get_all_linear_names()
+        difference = list(set(new) - set(old))
+        users = (await users_op.get_all_users_data())
+
+        for index, user in users.iterrows():
+            # print(user['telegram_id'], user['main_api_key'], user['main_secret_key'], user['max_leverage'])
+            # print(user['telegram_id'], user['demo_api_key'], user['demo_secret_key'], user['max_leverage'])
+            for element in difference:
+                await set_lev_linears(user['telegram_id'], element, user['max_leverage'], demo=False)
+                await set_lev_linears(user['telegram_id'], element, user['max_leverage'], demo=True)
+            await asyncio.sleep(1)
+
 
     asyncio.run(main_assync())
 
