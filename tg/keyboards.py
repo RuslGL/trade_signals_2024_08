@@ -61,7 +61,6 @@ class Keyboards:
     async def confirm_payment(self, params):
         user_id = params['id']
         subs = 'conf_' + params.get('subs')+'_'+str(user_id)
-        # print(subs)
         btn_1 = InlineKeyboardButton(
             text='ОПЛАЧЕНО',
             callback_data=subs
@@ -74,9 +73,7 @@ class Keyboards:
     async def admin_payment_confirmation(self, params):
         subs = params.get('subs')
         user_id = params.get('user_id')
-        # print(params)
         call = 'confirmed_' + subs + '_' + str(user_id)
-        # print(call)
         btn_1 = InlineKeyboardButton(
             text='ПОДТВЕРЖДАЮ',
             callback_data=call
@@ -91,7 +88,6 @@ class Keyboards:
 #               #####
 
     async def main_menu(self, params):
-        print(params)
         try:
             if params.get('stop_trading'):
                 btn_trade = 'Включить торговлю'
@@ -288,7 +284,6 @@ class Keyboards:
             return InlineKeyboardMarkup(inline_keyboard=our_menu)
 
     async def change_settings(self, params):
-            print(params, 'from change_settings')
             if params.get('spot') == True:
                 text = 'Тип торговли - спотовая'
             else:
@@ -373,7 +368,6 @@ class Keyboards:
 
 
     async def coins_settings(self, params):
-        print('V klaviature coins settings', params)
         if "-1" in params.get('trading_pairs'):
             text_1 = "Торг. новыми монетами. Выключить?"
         else:
@@ -414,11 +408,6 @@ class Keyboards:
 
 
     async def change_coins(self, params):
-        # print('V klaviature coins settings', params)
-        # if "-1" in params.get('trading_pairs'):
-        #     text_1 = "Торг. новыми монетами. Выключить?"
-        # else:
-        #     text_1 = "Торг. новыми монетами. Включить?"
 
         btn_1 = InlineKeyboardButton(
              text= "Добавить монеты в список",

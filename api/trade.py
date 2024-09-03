@@ -280,23 +280,31 @@ async def set_lev_for_all_linears_demo_plus_main(telegram_id, leverage):
 
 if __name__ == '__main__':
     async def main():
-        async def universal_market():
-            url = 'https://api-demo.bybit.com' +'/v5/order/create'
-            api_key = '4AUSvuQyAZ1KgxrMvz'
-            secret_key = 'WgW4gfYMK7IXJjhsr1uw2uJSTzNLKgbAr2Iy'
-            return await post_bybit_signed(url, api_key, secret_key,
-                                           orderType='Market',
-                                           category='linear',
-                                           symbol='BTCUSDT',
-                                           side='Buy',
-                                           qty=0.001,
-                                           marketUnit='baseCoin',
-                                           )
+        pass
+        # async def universal_market():
+        #     url = 'https://api-demo.bybit.com' +'/v5/order/create'
+        #     api_key = '4AUSvuQyAZ1KgxrMvz'
+        #     secret_key = 'WgW4gfYMK7IXJjhsr1uw2uJSTzNLKgbAr2Iy'
+        #     return await post_bybit_signed(url, api_key, secret_key,
+        #                                    orderType='Market',
+        #                                    category='linear',
+        #                                    symbol='BTCUSDT',
+        #                                    side='Buy',
+        #                                    qty=0.001,
+        #                                    marketUnit='baseCoin',
+        #                                    )
+        #
+        #
+        # res = await universal_market()
 
+        # res =await universal_spot_conditional_market_order('https://api-demo.bybit.com/v5/order/create',
+        #                                               'dfzUeU1Ryl1Omz0nGc',
+        #                                               'p2cvozFtkmObLgg10PPH76O7qPRb1hok63b4',
+        #                                               'SCAUSDT', 'Sell', '318.15000000000003',
+        #                                               '0.1646', '666038149_demo_spot_tp_2b8d089e9')
+        #
+        # print(res)
 
-        res = await universal_market()
-
-        print(res)
 
 
 

@@ -3,7 +3,7 @@ import os
 import time
 
 from datetime import datetime, timedelta
-
+from decimal import Decimal, ROUND_DOWN
 from warnings import filterwarnings
 filterwarnings("ignore")
 
@@ -28,14 +28,11 @@ from db.newcoins import NewPairsOperations
 from db.alerts import AlertsOperations
 
 from api.market import process_spot_linear_settings, get_prices
-from api.account import get_wallet_balance, find_usdt_budget, get_user_orders, get_user_positions
+from api.account import get_wallet_balance, find_usdt_budget, get_user_orders, get_user_positions, cancel_order_by_id, get_order_by_id
 from api.utils import calculate_purchase_volume, round_price, adjust_quantity
 from api.trade import (universal_spot_conditional_limit_order, unuversal_linear_conditional_market_order,
                        amend_spot_conditional_market_order, universal_market_order, set_tp_linears,
                        universal_spot_conditional_market_order)
-
-
-
 
 from tg.main_func import start_bot
 import code.settings as st
@@ -544,7 +541,7 @@ async def trade_performance(database_url, price_queue):
 
                                 if row['order_type'] == 'spot':
                                     category = 'spot'
-                                    print(row['order_type'])
+                                    #print(row['order_type'])
                                     current_price = float(spot_price)
                                     limit_volume = max_trade / current_price
                                     if extra_volume + prev_volume >= limit_volume:
@@ -848,6 +845,7 @@ async def tp_execution(database_url, price_queue):
                         current_price = float(linear_prices.get(row['symbol']))
                     else:
                         current_price = float(spot_prices.get(row['symbol']))
+                    # print(row)
                     prev_price = float(row['avgPrice'])
 
                     x = user['tp_min'].iloc[0]
@@ -857,13 +855,9 @@ async def tp_execution(database_url, price_queue):
                         # print(3, 'Ищем сигнал на закрытие лонга')
 
                         if current_price >= (prev_price * (1 + x / 100)):
-                            # print(f"Текущая цена  {current_price} на {x}% или больше превышает цену покупки {prev_price}. Пора ТП на ЛОНГ {row['symbol']}")
                             symbol = row['symbol']
-                            #qty_info = row['cumExecQty'].iloc[0]
-                            qty_info = float(row['cumExecQty'])
-                            #print('qty_info', qty_info)
-                            cumExecFee = float(row["cumExecFee"])
-                            #print('cumExecFee', cumExecFee)
+                            qty_info = Decimal(row['cumExecQty'])
+                            cumExecFee = Decimal(row["cumExecFee"])
                             trade_type = row['market']   # demo/real
                             order_type = row['order_type']  # spot/linear
 
@@ -872,11 +866,10 @@ async def tp_execution(database_url, price_queue):
                                 spot_settings = spot_data.get(symbol[:-4])
                                 price_tick = spot_settings.get('tick_size')
                                 spot_settings = spot_data.get(symbol[:-4])
-                                #sprint(symbol[:-4])
-                                #print(spot_data)
-                                #print(spot_settings)
-                                qty_tick = float(spot_settings.get('base_precision'))
+                                qty_tick = Decimal(spot_settings.get('base_precision'))
                                 qty_info = ((qty_info - cumExecFee) // qty_tick) * qty_tick
+                                qty_info = qty_info.quantize(qty_tick, rounding=ROUND_DOWN)
+
 
                             else:
                                 linear_settings = linear_data.get(symbol[:-4])
@@ -922,9 +915,6 @@ async def tp_execution(database_url, price_queue):
                                     user['main_api_key'].iloc[0]
                                 tp_secret_key = user['demo_secret_key'].iloc[0] if user['trade_type'].iloc[0] == 'demo' else \
                                     user['main_secret_key'].iloc[0]
-                                # position = await universal_spot_conditional_limit_order(tp_api_url , tp_api_key, tp_secret_key,
-                                #                       symbol, tp_side, qty_info, price,
-                                #                       triggerPrice, orderLinkId)
                                 print('Открываем спот первичный ТП на условиях',
                                       tp_api_url, tp_api_key, tp_secret_key,
                                       symbol, tp_side, qty_info,
@@ -967,7 +957,7 @@ async def tp_execution(database_url, price_queue):
                         signal = current_price <= (prev_price * (1 - x / 100))
                         if signal and (row['order_type'] == 'linear'):
 
-                            print('Трейлинг стоп на фьюч открываем ИЗНАЧАЛЬНО ШОРТ?')
+                            print('Трейлинг стоп на фьюч открываем')
                             print('Материнский ордер', row)
 
                             # проверить что изначальный тип ордера тоже был demo или real
@@ -1051,9 +1041,6 @@ async def tp_execution(database_url, price_queue):
 
                     tp_secret_key = user['demo_secret_key'].iloc[0] if user['trade_type'].iloc[0] == 'demo' else \
                         user['main_secret_key'].iloc[0]
-                    # res = await amend_spot_conditional_market_order(
-                    #     amend_order_url, tp_api_key, tp_secret_key,
-                    #     symbol, new_price, new_triggerPrice, prev_orderLinkId)
                     print('Меняем спот ТП на условиях',
                           amend_order_url, tp_api_key, tp_secret_key,
                           symbol, new_triggerPrice, prev_orderLinkId
@@ -1111,8 +1098,7 @@ async def daily_task():
                     #           ##########################
                     #                       ########
 
-                    print('Выполняется каждую 1 минут или меньше')
-                    # print('Poluchaem otritie posizii')
+                    # print('Выполняется каждую 1 минут или меньше')
 
                     positions_op = PositionsOperations(DATABASE_URL)
                     user_op = UsersOperations(DATABASE_URL)
@@ -1129,14 +1115,6 @@ async def daily_task():
                         )
                         #print('open_positions_from_db', open_positions_from_db)
                         all_users = [user['telegram_id'] for user in (await user_op.get_active_users())]
-
-                        # print(all_users)
-                        # if open_positions_from_db.empty:
-                        #     #print('no users with open positions')
-                        #     users_with_open = []
-                        # else:
-                        #     users_with_open = open_positions_from_db[('owner_id')].unique()
-
 
                         for telegram_id in all_users:
                             settings = await user_op.get_user_data(telegram_id)
@@ -1160,14 +1138,15 @@ async def daily_task():
                             else:
                                 demo_active_positions = []
                             all_open_api = main_active_positions + demo_active_positions
+
                             #print('all_open_api', all_open_api)
                             set_api = set(all_open_api)
+                            # print('all_open_api', set_api)
                             # # фильтруем общие позиции юзера, который обрабатывается в цикле
                             if open_positions_from_db.empty:
                                 set_db = set()
                             else:
                                 user_open_pos_from_db = open_positions_from_db[open_positions_from_db['owner_id'] == telegram_id]
-                                #print('user_open_pos_from_db', user_open_pos_from_db)
                                 set_db = set(user_open_pos_from_db['symbol'].unique())
                                 # print( telegram_id, 'set_db - 1', set_db)
                                 # print(telegram_id, 'set_api - 1', set_api)
@@ -1244,6 +1223,7 @@ async def daily_task():
                     #                       ########
 
                     try:
+                        # получаем все открытые ТП
                         open_positions_from_db = await positions_op.get_positions_by_fields(
                             {
                                 'finished': False,
@@ -1278,6 +1258,66 @@ async def daily_task():
                         print(f"Ошибка в процессе обработки полностью исполненных спотовых позиций: {e}")
                         traceback.print_exc()
 
+                    # отменяем ордера, которые не исполнились в течение 300 минут
+                    # находим и обрабатываем ордера, утерянные из-за сбоя api
+                    try:
+
+                        open_positions = await positions_op.get_positions_by_fields({"orderStatus": False,
+                                                                                     "type": "main"})
+                        if not open_positions.empty:
+                            current_time = datetime.now()
+                            for index, position in open_positions.iterrows():
+                                try:
+                                    if position['market'] == 'demo':
+                                        res = await get_order_by_id(position['owner_id'], position['order_type'],
+                                                                    position['bybit_id'], demo=True)
+                                    else:
+                                        res = await get_order_by_id(position['owner_id'], position['order_type'],
+                                                                    position['bybit_id'], demo=None)
+                                    if res[0] == "Filled":
+                                        print('Change', position['bybit_id'], position['symbol'], 'it filled')
+                                        order_data = {
+                                            "bybit_id": position['bybit_id'],
+                                            "orderStatus": True,
+                                            "avgPrice": res[1].get('avgPrice'),
+                                            "cumExecValue": res[1].get('cumExecValue'),
+                                            "cumExecQty": res[1].get('cumExecQty'),
+                                            "cumExecFee": res[1].get('cumExecFee'),
+                                        }
+                                        await positions_op.upsert_position(order_data)
+                                    else:
+                                        created_time = datetime.fromisoformat(position['created'])
+                                        time_difference = current_time - created_time
+                                        difference_in_minutes = time_difference.total_seconds() / 60
+                                        if difference_in_minutes >= 300:
+
+                                            print('S momenta sozdaniya ordera', difference_in_minutes, position['bybit_id'],
+                                                  position['symbol'], "отменяем ордер")
+                                            print('order_id', res[1].get('orderId'))
+                                            if position['market'] == 'demo':
+                                                await cancel_order_by_id(position['owner_id'], position['order_type'],
+                                                                         position['symbol'],
+                                                                         res[1].get('orderId'), demo=True)
+                                            else:
+                                                await cancel_order_by_id(position['owner_id'], position['order_type'],
+                                                                         position['symbol'],
+                                                                         res[1].get('orderId'), demo=None)
+                                            order_data = {
+                                                "bybit_id": position['bybit_id'],
+                                                "finished": True,
+                                                "orderStatus": True,
+                                                "tp_opened": True,
+                                            }
+                                            await positions_op.upsert_position(order_data)
+                                except Exception as e:
+                                    print(f"Ошибка в процессе обработки старых и потерянных в API ордеров, на отдельной позиции: {e}")
+                                    traceback.print_exc()
+
+                                    ####
+                    except Exception as e:
+                        print(f"Ошибка в процессе обработки старых и потерянных в API ордеров: {e}")
+                        traceback.print_exc()
+
                 except Exception as e:
 
                     print(f"Ошибка в процессе daily_task - short tasks: {e}")
@@ -1291,6 +1331,9 @@ async def daily_task():
                # Обновляем оставшееся время до полуночи после выполнения задачи
                 now = datetime.now(timezone.utc)
                 sleep_time_until_midnight = (next_midnight - now).total_seconds()
+
+
+
 
                 # Если оставшееся время меньше 15 минут, выходим из цикла
                 if sleep_time_until_midnight <= 0:
