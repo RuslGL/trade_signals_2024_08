@@ -2,6 +2,8 @@ import asyncio
 import os
 import time
 
+import sys
+
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_DOWN
 from warnings import filterwarnings
@@ -15,6 +17,7 @@ from dotenv import load_dotenv
 import traceback
 import uuid
 
+from logger_config import setup_logger, log_error
 
 
 
@@ -44,6 +47,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 load_dotenv()
+logger = setup_logger()
 
 DATABASE_URL = str(os.getenv('database_url'))
 
@@ -489,7 +493,8 @@ async def trade_performance(database_url, price_queue):
                 if averaging:
                     print('Start averaging logic')
                     symbol = coin.upper() + 'USDT'
-                    # получаем открытые (выкупленные) позиции у которых еще не тригернулся ТП и у которых совпадает символ
+                    # получаем открытые (выкупленные) позиции, которые не завершены,
+                    # у которых еще не тригернулся ТП, исполнен первоначальный ордер на покупку и у которых совпадает символ
                     try:
                         closed_positions_no_tp = (await positions_op.get_positions_by_fields(
                             {'finished': False, 'orderStatus': True, 'tp_opened': False, 'depends_on': '-1', 'symbol': symbol
@@ -525,12 +530,9 @@ async def trade_performance(database_url, price_queue):
                         closed_positions_no_tp = closed_positions_no_tp[['owner_id', 'symbol', 'side',
                                                                          'bybit_id', 'avgPrice', 'cumExecValue',
                                                                          'order_type', 'cumExecQty', 'market']]
-
-
                         print('Проверяем условия усреднения')
 
 
-                        # ОБЕРНУТЬ В ТРАЙ ЭКСЕПТ
                         for index, row in closed_positions_no_tp.iterrows():
                             try:
                                 user = users[users['telegram_id'] == row['owner_id']]
@@ -538,15 +540,14 @@ async def trade_performance(database_url, price_queue):
                                 if user['stop_trading'].iloc[0]:
                                     continue
 
-                                print(user['trading_pairs'].iloc[0])
+                                # проверяем на наличие в списке торгуемых монет
                                 if user['trading_pairs'].iloc[0] and symbol not in user['trading_pairs'].iloc[
                                     0] and '-1' not in user['trading_pairs'].iloc[0]:
                                     print('not in trading pairs')
                                     continue
+
+                                # проверяем торговлю новыми монетами
                                 if "-1" in user['trading_pairs'].iloc[0]:
-                                    #print('new_pairs', new_pairs)
-                                    #print('new_pairs', new_pairs)
-                                    # print(symbol)
                                     if symbol not in new_pairs:
                                         continue
 
@@ -557,7 +558,9 @@ async def trade_performance(database_url, price_queue):
                                     averaging_size = float(user['averaging_size'].iloc[0])
                                     prev_price = float(row['avgPrice'])
                                     prev_volume = float(row['cumExecQty'])
-                                    extra_volume = abs((prev_volume * averaging_size) - prev_volume)
+
+                                    extra_volume = abs(prev_volume * averaging_size)
+                                    #extra_volume = abs((prev_volume * averaging_size) - prev_volume)
 
                                     spot_price = spot_prices.get(symbol)
                                     linear_price = linear_prices.get(symbol)
@@ -565,7 +568,6 @@ async def trade_performance(database_url, price_queue):
 
                                     if row['order_type'] == 'spot':
                                         category = 'spot'
-                                        #print(row['order_type'])
                                         current_price = float(spot_price)
                                         limit_volume = max_trade / current_price
                                         if extra_volume + prev_volume >= limit_volume:
@@ -686,11 +688,22 @@ async def trade_performance(database_url, price_queue):
                                                     print('Добавлен', orderLinkId)
                             except Exception as e:
                                 print(f"Ошибка в блоке START AVERAGING TRADE LOGIC по отдельной позиции: {e}")
-                                traceback.print_exc()
+                                #traceback.print_exc()
+                                log_error(logger, "Ошибка в блоке START AVERAGING TRADE LOGIC по отдельной позиции", e)
+                                if "too many clients already" in str(e):
+                                    log_error(logger, "Критичная ошибка в БД, перезапуск программы", e)
+                                    sys.exit()
+                                await asyncio.sleep(1)
+
 
                     except Exception as e:
                         print(f"Ошибка в блоке START AVERAGING TRADE LOGIC: {e}")
-                        traceback.print_exc()
+                        # traceback.print_exc()
+                        log_error(logger, "Ошибка в блоке START AVERAGING TRADE LOGIC", e)
+                        if "too many clients already" in str(e):
+                            log_error(logger, "Критичная ошибка в БД, перезапуск программы", e)
+                            sys.exit()
+                        await asyncio.sleep(1)
 
                 #                    #####
                 #                ############
@@ -825,10 +838,16 @@ async def trade_performance(database_url, price_queue):
 
             await asyncio.sleep(1)
 
+            await asyncio.sleep(5)
+            #raise Exception("sorry, too many clients already")
 
         except Exception as e:
             print(f"Ошибка в trade_performance: {e}")
-            traceback.print_exc()
+            # traceback.print_exc()
+            log_error(logger, "Ошибка в trade_performance", e)
+            if "too many clients already" in str(e):
+                log_error(logger, "Критичная ошибка в БД, перезапуск программы", e)
+                sys.exit()
             await asyncio.sleep(1)
 
 
@@ -1015,7 +1034,13 @@ async def tp_execution(database_url, price_queue):
 
         except Exception as e:
             print(f"Ошибка в процессе find initial tp: {e}")
-            traceback.print_exc()
+            # traceback.print_exc()
+            log_error(logger, "Ошибка в процессе find initial tp", e)
+            if "too many clients already" in str(e):
+                log_error(logger, "Критичная ошибка в БД, перезапуск программы", e)
+                sys.exit()
+            await asyncio.sleep(1)
+
             #                    #####
             #                ############
             # ####### STOP CHECK FIRST TP CONDITION ########
@@ -1084,8 +1109,13 @@ async def tp_execution(database_url, price_queue):
 
 
         except Exception as e:
-            print(f"Ошибка в процессе find trailing tp: {e}")
+            # traceback.print_exc()
+            log_error(logger, "tp_execution", e)
+            if "too many clients already" in str(e):
+                log_error(logger, "Критичная ошибка в БД, перезапуск программы", e)
+                sys.exit()
             await asyncio.sleep(1)
+
             #                    #####
             #                ############
             # ####### STOP CHECK TRAIL TP CONDITION ########
@@ -1197,12 +1227,22 @@ async def daily_task():
                                             await positions_op.upsert_position(order_data)
                                 except Exception as e:
                                     print(f"Ошибка в процессе обработки старых и потерянных в API ордеров, на отдельной позиции: {e}")
-                                    traceback.print_exc()
+                                    # traceback.print_exc()
+                                    log_error(logger, "Ошибка в процессе обработки старых и потерянных в API ордеров, на отдельной позиции", e)
+                                    if "too many clients already" in str(e):
+                                        log_error(logger, "Критичная ошибка в БД, перезапуск программы", e)
+                                        sys.exit()
+                                    await asyncio.sleep(1)
 
                                     ####
                     except Exception as e:
                         print(f"Ошибка в процессе обработки старых и потерянных в API ордеров: {e}")
-                        traceback.print_exc()
+                        # traceback.print_exc()
+                        log_error(logger, "Ошибка в процессе обработки старых и потерянных в API ордеров", e)
+                        if "too many clients already" in str(e):
+                            log_error(logger, "Критичная ошибка в БД, перезапуск программы", e)
+                            sys.exit()
+                        await asyncio.sleep(1)
 
 
 
@@ -1327,7 +1367,12 @@ async def daily_task():
                                     await positions_op.upsert_position(pos_data)
                     except Exception as e:
                         print(f"Ошибка в процессе выявления пропущенных фьючерсных позиций: {e}")
-                        traceback.print_exc()
+                        # traceback.print_exc()
+                        log_error(logger, "Ошибка в процессе выявления пропущенных фьючерсных позиций", e)
+                        if "too many clients already" in str(e):
+                            log_error(logger, "Критичная ошибка в БД, перезапуск программы", e)
+                            sys.exit()
+                        await asyncio.sleep(1)
                     #                       ########
                     #           ##########################
                     # ######## FINISHED WITH CHECK ALL LINEARS POSITIONS ########
@@ -1372,12 +1417,21 @@ async def daily_task():
 
                     except Exception as e:
                         print(f"Ошибка в процессе обработки полностью исполненных спотовых позиций: {e}")
-                        traceback.print_exc()
+                        # traceback.print_exc()
+                        log_error(logger, "Ошибка в процессе обработки полностью исполненных спотовых позиций", e)
+                        if "too many clients already" in str(e):
+                            log_error(logger, "Критичная ошибка в БД, перезапуск программы", e)
+                            sys.exit()
+                        await asyncio.sleep(1)
 
                 except Exception as e:
-
                     print(f"Ошибка в процессе daily_task - short tasks: {e}")
-                    traceback.print_exc()
+                    # traceback.print_exc()
+                    log_error(logger, "Ошибка в процессе daily_task - short tasks", e)
+                    if "too many clients already" in str(e):
+                        log_error(logger, "Критичная ошибка в БД, перезапуск программы", e)
+                        sys.exit()
+                    await asyncio.sleep(1)
 
                 # здесь меняем время сна в секундах
                 sleep_interval = min(30, sleep_time_until_midnight)
@@ -1425,7 +1479,12 @@ async def daily_task():
                     if total_budget != -1:
                         result.append({'user_id': user_id, 'total_budget': total_budget})
                 except Exception as e:
-                    print(f"Ошибка при получении баланса для пользователя {user_id}: {e}")
+                    # traceback.print_exc()
+                    log_error(logger, "tp_execution", e)
+                    if "too many clients already" in str(e):
+                        log_error(logger, "Критичная ошибка в БД, перезапуск программы", e)
+                        sys.exit()
+                    await asyncio.sleep(1)
 
             for entry in result:
                 await pnl_op.add_pnl_entry(entry)
@@ -1449,7 +1508,12 @@ async def daily_task():
                 print("Закончили ежедневную задачу по получению новых монет и обновлению плечей")
 
             except Exception as e:
-                print(f"Ошибка при получении новых монет и обновлении плеч{e}")
+                # traceback.print_exc()
+                log_error(logger, "tp_execution", e)
+                if "too many clients already" in str(e):
+                    log_error(logger, "Критичная ошибка в БД, перезапуск программы", e)
+                    sys.exit()
+                await asyncio.sleep(1)
 
 
             # checking_api_keys
@@ -1471,6 +1535,9 @@ async def daily_task():
                         await asyncio.sleep(5)
             except Exception as e:
                 print("Произошла ошибка при ежедневной проверке ключей:", e)
+                if "too many clients already" in str(e):
+                    sys.exit(1)
+                await asyncio.sleep(1)
 
             try:
 
@@ -1487,9 +1554,17 @@ async def daily_task():
 
             except Exception as e:
                 print("Произошла ошибка при ежедневном обновлении сеттингов", e)
+                if "too many clients already" in str(e):
+                    sys.exit(1)
+                await asyncio.sleep(1)
 
         except Exception as e:
-            print(f"Ошибка в блоке ежедневных задач daily tasks{e}")
+            # traceback.print_exc()
+            log_error(logger, "tp_execution", e)
+            if "too many clients already" in str(e):
+                log_error(logger, "Критичная ошибка в БД, перезапуск программы", e)
+                sys.exit()
+            await asyncio.sleep(1)
 
 
 def run_on_start_process():
@@ -1507,7 +1582,11 @@ def run_trade_performance_process(price_queue):
         try:
             asyncio.run(trade_performance(DATABASE_URL, price_queue))
         except Exception as e:
-            print(f"Ошибка в процессе trade_performance: {e}")
+            # traceback.print_exc()
+            log_error(logger, "tp_execution", e)
+            if "too many clients already" in str(e):
+                log_error(logger, "Критичная ошибка в БД, перезапуск программы", e)
+                sys.exit()
             time.sleep(1)
 
 async def update_prices(price_queue):
@@ -1520,7 +1599,11 @@ async def update_prices(price_queue):
                 price_queue.put_nowait((spot_prices, linear_prices))
             await asyncio.sleep(0.5)
         except Exception as e:
-            print(f"Ошибка в процессе update_prices: {e}")
+            # traceback.print_exc()
+            log_error(logger, "tp_execution", e)
+            if "too many clients already" in str(e):
+                log_error(logger, "Критичная ошибка в БД, перезапуск программы", e)
+                sys.exit()
             await asyncio.sleep(1)
 
 def run_update_prices_process(price_queue):
@@ -1529,27 +1612,64 @@ def run_update_prices_process(price_queue):
 def run_daily_task_process():
     asyncio.run(daily_task())
 
+
 def main():
-    # Создаем и запускаем процессы
-    on_start_process = Process(target=run_on_start_process)
-    trade_performance_process = Process(target=run_trade_performance_process, args=(price_queue,))
-    price_update_process = Process(target=run_update_prices_process, args=(price_queue,))
-    daily_task_process = Process(target=run_daily_task_process)
-    tp_execution_process = Process(target=run_tp_execution_process, args=(price_queue,))
+    processes = [
+        Process(target=run_on_start_process),
+        Process(target=run_trade_performance_process, args=(price_queue,)),
+        Process(target=run_update_prices_process, args=(price_queue,)),
+        Process(target=run_daily_task_process),
+        Process(target=run_tp_execution_process, args=(price_queue,))
+    ]
 
-    on_start_process.start()
-    trade_performance_process.start()
-    price_update_process.start()
-    daily_task_process.start()
-    tp_execution_process.start()
+    # Запускаем все процессы
+    for process in processes:
+        process.start()
 
-    # Ожидаем завершения процессов
-    on_start_process.join()
-    trade_performance_process.join()
-    price_update_process.join()
-    daily_task_process.join()
-    tp_execution_process.join()
+    initial_process_count = len(processes)
+
+    try:
+        while True:
+            current_process_count = sum(1 for process in processes if process.is_alive())
+            # print(f"Текущее количество активных процессов: {current_process_count}")
+
+            # Если количество активных процессов уменьшилось
+            if current_process_count < initial_process_count:
+                print("Количество активных процессов изменилось. Завершение программы...")
+
+                # Завершаем все оставшиеся активные процессы
+                for process in processes:
+                    if process.is_alive():
+                        print(f"Завершаем процесс {process.name} с PID {process.pid}")
+                        process.terminate()
+                        process.join(timeout=5)  # Ждем 5 секунд завершения процесса
+
+                        # Если процесс не завершился, убиваем его принудительно
+                        if process.is_alive():
+                            print(f"Принудительное завершение процесса {process.name} с PID {process.pid}")
+                            process.kill()
+                            process.join()
+
+                break  # После завершения всех процессов выходим из цикла
+
+            # Проверяем процессы каждую секунду
+            time.sleep(5)
+
+    except Exception as e:
+        print(f"Ошибка в процессе: {e}")
+
+    finally:
+        # В любом случае проверяем, что все процессы завершены
+        for process in processes:
+            if process.is_alive():
+                print(f"Принудительное завершение процесса {process.name} с PID {process.pid}")
+                process.terminate()
+                process.join(timeout=5)
+                if process.is_alive():
+                    process.kill()
+                    process.join()
 
 
 if __name__ == "__main__":
     main()
+##
