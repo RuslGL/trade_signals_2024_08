@@ -231,8 +231,11 @@ async def get_user_positions(settings, demo=None):
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers, params=params) as response:
                 data = await response.json()
+        #print(data)
         if data.get('retMsg') == 'OK':
             return data.get('result').get('list')
+        if data.get('retMsg') == 'System error. Please try again later.':
+            return -1
         else:
             return []
 
@@ -330,54 +333,65 @@ async def cancel_order_by_id(telegram_id, category, symbol, orderId, demo=None):
 # if __name__ == '__main__':
 #
 #     async def main():
+#         while True:
+#
+#             telegram_id = 666038149
+#             positions_op = PositionsOperations(DATABASE_URL)
+#             open_positions_from_db = await positions_op.get_positions_by_fields(
+#                 {
+#                     'finished': False,
+#                     'orderStatus': True,
+#                     'order_type': 'linear',
+#                 },)
+#
+#             settings ={ 'main_secret_key': 'G6d5XFZ9v8uvqxWOxNDlqgeFgQonJuMTBmyh', 'max_trade': 200.0, 'trading_pairs': [], 'username': 'Ruslan None', 'demo_api_key': 'dfzUeU1Ryl1Omz0nGc', 'spot': False, 'demo_secret_key': 'p2cvozFtkmObLgg10PPH76O7qPRb1hok63b4', 'tp_min': 0.1, 'trade_type': 'demo', 'tp_step': 0.1, 'subscription': 4881066778, 'telegram_id': 666038149, 'standart_settings': True, 'trade_pair_if': 0.1, 'averaging': True, 'stop_trading': False, 'averaging_step': 0.01, 'main_api_key': 'HGpVCtjfObgeyO0R7e', 'min_trade': 50.0, 'averaging_size': 1.5, 'max_leverage': 1.0}
+#             tasks = [
+#                 asyncio.create_task(get_user_positions(settings, demo=None)),
+#                 asyncio.create_task(get_user_positions(settings, demo=True)),
+#             ]
+#
+#             results = await asyncio.gather(*tasks)
+#             main_res = results[0]
+#             demo_res = results[1]
+#             if main_res == -1 or demo_res == -1:
+#                 print('Ошибка сервера - пропускаем')
+#                 await asyncio.sleep(5)
+#                 continue
+#             if main_res:
+#                 main_active_positions = [element.get('symbol') for element in main_res]
+#             else:
+#                 main_active_positions = []
+#
+#             if demo_res:
+#                 demo_active_positions = [element.get('symbol') for element in demo_res]
+#             else:
+#                 demo_active_positions = []
+#
+#             all_open_api = main_active_positions + demo_active_positions
 #
 #
+#             print(demo_active_positions)
+#             print('all_open_api', telegram_id, all_open_api)
 #
-#         # works
-#         from datetime import datetime
-#         positions_op = PositionsOperations(DATABASE_URL)
+#             set_api = set(all_open_api)
 #
+#             if open_positions_from_db.empty:
+#                 set_db = set()
+#             else:
+#                 user_open_pos_from_db = open_positions_from_db[open_positions_from_db['owner_id'] == telegram_id]
+#                 set_db = set(user_open_pos_from_db['symbol'].unique())
+#                 # print( telegram_id, 'set_db - 1', set_db)
+#                 # print(telegram_id, 'set_api - 1', set_api)
+#             #
+#             not_in_api = list(set_db - set_api)
+#             print('not_in_api', telegram_id, not_in_api)
+#             for position in not_in_api:
+#                 print('меняем finished на true', telegram_id, position)
+#                 to_change = user_open_pos_from_db[user_open_pos_from_db['symbol'] == position]['bybit_id'].iloc[0]
+#                 await positions_op.upsert_position({
+#                     'bybit_id': to_change,
+#                     'finished': True,
+#                 })
 #
-#         open_positions = await positions_op.get_positions_by_fields({"orderStatus": False,
-#                                                                      "type": "main"})
-#         if not open_positions.empty:
-#             current_time = datetime.now()
-#             for index, position in open_positions.iterrows():
-#                 if position['market'] == 'demo':
-#                     res = await get_order_by_id(position['owner_id'], position['order_type'], position['bybit_id'], demo=True)
-#                 else:
-#                     res = await get_order_by_id(position['owner_id'], position['order_type'], position['bybit_id'], demo=None)
-#                 if res[0] == "Filled":
-#                     print('Change', position['bybit_id'], position['symbol'],  'it filled')
-#                     order_data = {
-#                         "bybit_id": position['bybit_id'],
-#                         "orderStatus": True,
-#                         "avgPrice": res[1].get('avgPrice'),
-#                         "cumExecValue": res[1].get('cumExecValue'),
-#                         "cumExecQty": res[1].get('cumExecQty'),
-#                         "cumExecFee": res[1].get('cumExecFee'),
-#                     }
-#                     await positions_op.upsert_position(order_data)
-#                 else:
-#                     created_time = datetime.fromisoformat(position['created'])
-#                     time_difference = current_time - created_time
-#                     difference_in_minutes = time_difference.total_seconds() / 60
-#                     if difference_in_minutes >= 300:
-#
-#                         print('S momenta sozdaniya ordera', difference_in_minutes, position['bybit_id'], position['symbol'], "отменяем ордер")
-#                         print('order_id', res[1].get('orderId'))
-#                         if position['market'] == 'demo':
-#                             await cancel_order_by_id(position['owner_id'], position['order_type'], position['symbol'],
-#                                                                    res[1].get('orderId'), demo=True)
-#                         else:
-#                             await cancel_order_by_id(position['owner_id'], position['order_type'], position['symbol'],
-#                                                                    res[1].get('orderId'), demo=None)
-#                         order_data = {
-#                             "bybit_id": position['bybit_id'],
-#                             "finished": True,
-#                             "orderStatus": True,
-#                             "tp_opened": True,
-#                         }
-#                         await positions_op.upsert_position(order_data)
-#
+#             await asyncio.sleep(5)
 #     asyncio.run(main())

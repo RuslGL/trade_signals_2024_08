@@ -11,6 +11,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import and_
+from sqlalchemy import update
 
 from datetime import datetime, timedelta
 
@@ -217,61 +218,52 @@ class PositionsOperations:
             bybit_ids = result.scalars().all()
             return bybit_ids
 
+    async def update_position(self, position_data: dict):
+        async with self.async_session() as session:
+            async with session.begin():
+                print("Starting upsert operation...")
+
+                # Попытка найти существующую запись по bybit_id
+                existing_position = await session.execute(
+                    select(Positions).where(Positions.bybit_id == position_data["bybit_id"])
+                )
+                existing_position = existing_position.scalars().first()
+
+                if existing_position:
+                    print(f"Found existing position with bybit_id: {position_data['bybit_id']}")
+                    # Обновление существующей записи
+                    for key, value in position_data.items():
+                        if key != "bybit_id" and hasattr(existing_position, key):
+                            setattr(existing_position, key, value)
+                    print("Updated existing position.")
+                else:
+                    print(
+                        f"No existing position found, inserting new position with bybit_id: {position_data['bybit_id']}")
+                    # Вставка новой записи
+                    stmt = insert(Positions).values(position_data)
+                    await session.execute(stmt)
+                    print("Inserted new position.")
+
+            await session.commit()
+            print("Upsert operation committed.")
+
 if __name__ == "__main__":
     async def main():
         positions_manager = PositionsOperations(DATABASE_URL)
 
         # Создание таблицы
-        await positions_manager.create_table()
+        #await positions_manager.create_table()
 
         # Добавление или обновление первой позиции
-        first_position = {
-            "bybit_id": "12345",
-            "owner_id": 67892,
-            "type": "main",
-            "status": "open",
-            "symbol": "BTCUSD",
-            "performed": False,
-            "depends_on": None,
-        }
-        #await positions_manager.upsert_position(first_position)
+        first_position = {'bybit_id': '666038149_demo_linear_2df7bb5e074a', 'owner_id': 666038149,
+                          'type': 'main', 'market': 'demo', 'order_type': 'linear',
+                          'symbol': 'VIDTUSDT', 'side': 'Buy',
+                          'orderStatus': True, 'avgPrice': '0.04845', 'cumExecValue': '49.9035',
+                          'cumExecQty': '1030', 'cumExecFee': '1.03'}
+        #res = await positions_manager.upsert_position(first_position)
+        res = await positions_manager.get_positions_by_fields({'bybit_id': '666038149_demo_linear_2df7bb5e074a'})
+        print(res[['finished', 'bybit_id']])
 
-        # Добавление второй позиции
-        second_position = {
-            "bybit_id": "67890",
-            "owner_id": 67891,
-            "type": "main",
-            "status": "open",
-            "symbol": "ETHUSD",
-            "performed": False,
-            "depends_on": None,
-        }
-        #await positions_manager.upsert_position(second_position)
-
-        # Добавление третьей позиции с depends_on, совпадающим с первой позицией
-        third_position = {
-            "bybit_id": "11223",
-            "owner_id": 67892,
-            "type": "dependent",
-            "symbol": "XRPUSD",
-            "status": "open",
-            "performed": False,
-            "depends_on": "12345",  # Связано с первой позицией
-        }
-
-        #await positions_manager.upsert_position(third_position)
-
-        # Получение и вывод всех позиций по owner_id
-        #positions = await positions_manager.get_positions_by_owner_id(67892)
-        #print("Positions for owner_id 67890:", positions)
-
-        # Удаление основной позиции (и зависимой)
-        # await positions_manager.delete_position_by_bybit_id("12345")
-        #res = await positions_manager.get_position_by_bybit_id("666038149_demo_linear_1c5300314f38")
-        #print(res)
-        # getting position with dependants
-        #res = await positions_manager.get_position_with_dependents('12345')
-        #print(res)
 
     # Запуск асинхронного кода
     asyncio.run(main())

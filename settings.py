@@ -19,6 +19,7 @@ ENDPOINTS = {
     'amend_order': '/v5/order/amend',
     'linear_tp': '/v5/position/trading-stop',
     'open_positions': '/v5/position/list',
+    'cancel_all_orders': '/v5/order/cancel-all',
 
     # account endpoints
     'wallet-balance': '/v5/account/wallet-balance',

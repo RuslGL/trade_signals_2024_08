@@ -117,12 +117,14 @@ async def trade_performance(database_url, price_queue):
                                   signal[next(iter(signal))]['channel_id'])
 
                 print('New signal received', signal_details)
+                # print(signal)
 
                 #################### GATHER REQUESTS #######################
                 averaging_channels = await db_tg_channels.get_all_channels()
                 spot_data = await spot_set_op.get_all_spot_pairs_data()
                 linear_data = await lin_set_op.get_all_linear_pairs_data()
                 new_pairs = await new_pairs_op.get_all_names()
+                #print(new_pairs)
                 open_positions_all_us = await positions_op.get_positions_by_fields(
                     {'finished': False,
                      'type': 'main'},
@@ -139,6 +141,10 @@ async def trade_performance(database_url, price_queue):
                 else:
                     averaging = False  # main trade logic
                     print('Signal type - ordinary')
+
+                if signal_details[2] == "-1002216581782":
+                    print('unknown channel', signal_details[2])
+                    continue
 
                 spot_prices, linear_prices = price_queue.get()
 
@@ -220,11 +226,14 @@ async def trade_performance(database_url, price_queue):
                                 print('Спот этот символ уже открыт у юзера', symbol)
                                 continue
                             # если у юзера подключены  new pairs  проверяем
+
+                            print(user['trading_pairs'].iloc[0])
                             if user['trading_pairs'].iloc[0] and symbol not in user['trading_pairs'].iloc[
                                 0] and '-1' not in user['trading_pairs'].iloc[0]:
                                 print('not in trading pairs')
                                 continue
                             if "-1" in user['trading_pairs'].iloc[0]:
+                                # print('new_pairs', new_pairs)
                                 if symbol not in new_pairs:
                                     continue
 
@@ -246,7 +255,7 @@ async def trade_performance(database_url, price_queue):
                             qty_info_spot = calculate_purchase_volume(sum_amount, spot_price, spot_min_volume,
                                                                       spot_qty_tick)
 
-                            print('Покупка для спот лонга', users[users['telegram_id'] == user_id]['username'], sum_amount, trigger_price, qty_info_spot)
+                            #print('Покупка для спот лонга', users[users['telegram_id'] == user_id]['username'], sum_amount, trigger_price, qty_info_spot)
                             # если функция возвращает отриц значение значит сумма недостаточ - пропуск для этого юзера
                             if qty_info_spot < 0:
                                 continue
@@ -261,7 +270,8 @@ async def trade_performance(database_url, price_queue):
                             }
 
                         # Формируем и отправляем ордера
-                        # tasks = []
+                        #tasks = []
+                        #print('for_spot_orders', for_spot_orders)
                         for user_id, order_data in for_spot_orders.items():
                             user_info = users_spot[users_spot['telegram_id'] == user_id].iloc[0]
 
@@ -285,6 +295,7 @@ async def trade_performance(database_url, price_queue):
                                 )
                             )
                             tasks.append(task)
+                            #print('tasks', tasks)
 
 
                     ###### linears
@@ -326,6 +337,7 @@ async def trade_performance(database_url, price_queue):
                                 users_positions = open_positions_all_us[
                                     open_positions_all_us['owner_id'] == user_id]['symbol'].to_list()
                                 users_positions = list(set(users_positions))
+                                #print('users_positions', users_positions)
                             except:
                                 users_positions = []
                             # print('users_positions', users_positions)
@@ -333,14 +345,21 @@ async def trade_performance(database_url, price_queue):
                                 print('Фьюч этот символ уже открыт у юзера', symbol)
                                 continue
 
-                            # пока нет проверки на new pairs надо ее проверить на стадии получения сигнала
-                            if user_set['trading_pairs'] and symbol not in user_set[
-                                'trading_pairs'] and '-1' not in user_set['trading_pairs']:
+
+                            if (user_set['trading_pairs'] and symbol not in user_set['trading_pairs']
+                                    and '-1' not in user_set['trading_pairs']):
                                 print('not in trading pairs')
                                 continue
-                            # 1692124800
+                            if "-1" in user_set['trading_pairs']:
+                                #print('new_pairs', new_pairs)
+                                # print(symbol)
+                                if symbol not in new_pairs:
+                                    continue
+
+
 
                             if signal_details[0] == 'buy':
+                                print('покупаем фьюч')
                                 # считаем на какой процент (1.001/1.01) и т.п. нужно увеличить цену чтобы лонговать, настройка trade_pair_if
                                 tp_min_buy = float(users[users['telegram_id'] == user_id]['trade_pair_if']) / 100 + 1
                                 side = 'Buy'
@@ -365,7 +384,7 @@ async def trade_performance(database_url, price_queue):
                             # Рассчитываем количество монеты к покупке с учетом сеттингов монеты
                             qty_info = calculate_purchase_volume(sum_amount, trigger_price_value, linear_min_volume,
                                                                  linear_qty_tick)
-
+                            print('qty_info', qty_info)
                             # если функция возвращает отриц значение значит сумма недостаточ - пропуск для этого юзера
                             if qty_info < 0:
                                 continue
@@ -378,7 +397,7 @@ async def trade_performance(database_url, price_queue):
                             }
 
                         # Формируем и отправляем ордера
-                        # tasks = []
+                        #tasks = []
 
 
                         for user_id, order_data in for_linear_orders.items():
@@ -421,6 +440,7 @@ async def trade_performance(database_url, price_queue):
 
                     for position in results:
                         if isinstance(position, dict) and position.get('retMsg') == 'OK':
+                            print(position)
                             res = position.get('result')
                             print(res)
                             orderLinkId = res.get('orderLinkId')
@@ -472,7 +492,7 @@ async def trade_performance(database_url, price_queue):
                     # получаем открытые (выкупленные) позиции у которых еще не тригернулся ТП и у которых совпадает символ
                     try:
                         closed_positions_no_tp = (await positions_op.get_positions_by_fields(
-                            {'orderStatus': True, 'tp_opened': False, 'depends_on': '-1', 'symbol': symbol
+                            {'finished': False, 'orderStatus': True, 'tp_opened': False, 'depends_on': '-1', 'symbol': symbol
                              }))
 
                         if closed_positions_no_tp.empty:
@@ -512,156 +532,161 @@ async def trade_performance(database_url, price_queue):
 
                         # ОБЕРНУТЬ В ТРАЙ ЭКСЕПТ
                         for index, row in closed_positions_no_tp.iterrows():
-                            user = users[users['telegram_id'] == row['owner_id']]
-                            # если включен стоп трейд пропускаем юзера
-                            if user['stop_trading'].iloc[0]:
-                                continue
-                            if user['trading_pairs'].iloc[0] and symbol not in user['trading_pairs'].iloc[
-                                0] and '-1' not in user['trading_pairs'].iloc[0]:
-                                print('not in trading pairs')
-                                continue
-                            if "-1" in user['trading_pairs'].iloc[0]:
-                                # print(symbol)
-                                # print('Проверяем есть ли монета в списке')
-                                # print(new_pairs)
-                                if symbol not in new_pairs:
+                            try:
+                                user = users[users['telegram_id'] == row['owner_id']]
+                                # если включен стоп трейд пропускаем юзера
+                                if user['stop_trading'].iloc[0]:
                                     continue
 
-                            averaging = user['averaging'].iloc[0]
-                            max_trade = float(user['max_trade'].iloc[0])
-                            if averaging:
-                                averaging_step = float(user['averaging_step'].iloc[0])
-                                averaging_size = float(user['averaging_size'].iloc[0])
-                                prev_price = float(row['avgPrice'])
-                                prev_volume = float(row['cumExecQty'])
-                                extra_volume = abs((prev_volume * averaging_size) - prev_volume)
+                                print(user['trading_pairs'].iloc[0])
+                                if user['trading_pairs'].iloc[0] and symbol not in user['trading_pairs'].iloc[
+                                    0] and '-1' not in user['trading_pairs'].iloc[0]:
+                                    print('not in trading pairs')
+                                    continue
+                                if "-1" in user['trading_pairs'].iloc[0]:
+                                    #print('new_pairs', new_pairs)
+                                    #print('new_pairs', new_pairs)
+                                    # print(symbol)
+                                    if symbol not in new_pairs:
+                                        continue
 
-                                spot_price = spot_prices.get(symbol)
-                                linear_price = linear_prices.get(symbol)
+                                averaging = user['averaging'].iloc[0]
+                                max_trade = float(user['max_trade'].iloc[0])
+                                if averaging:
+                                    averaging_step = float(user['averaging_step'].iloc[0])
+                                    averaging_size = float(user['averaging_size'].iloc[0])
+                                    prev_price = float(row['avgPrice'])
+                                    prev_volume = float(row['cumExecQty'])
+                                    extra_volume = abs((prev_volume * averaging_size) - prev_volume)
 
-
-                                if row['order_type'] == 'spot':
-                                    category = 'spot'
-                                    #print(row['order_type'])
-                                    current_price = float(spot_price)
-                                    limit_volume = max_trade / current_price
-                                    if extra_volume + prev_volume >= limit_volume:
-                                        extra_volume = limit_volume - prev_volume
-                                    limit_budget = float(budget_map[row['owner_id']]) / current_price
-                                    if extra_volume > limit_budget:
-                                        extra_volume = limit_budget
-
-                                    extra_volume = adjust_quantity(extra_volume, spot_min_volume, spot_qty_tick)
-                                    print(extra_volume, 'extra_volume')
-                                else:
-                                    current_price = float(linear_price)
-                                    limit_volume = max_trade / current_price
-                                    if extra_volume + prev_volume >= limit_volume:
-                                        extra_volume = limit_volume - prev_volume
-                                    limit_budget = float(budget_map[row['owner_id']]) / current_price
-                                    if extra_volume > limit_budget:
-                                        extra_volume = limit_budget
-
-                                    category = 'linear'
-                                    extra_volume = adjust_quantity(extra_volume, linear_min_volume, linear_qty_tick)
-                                    print(extra_volume, 'extra_volume')
-
-                                if extra_volume == -1:
-                                    print('Недостаточно объема для минимальной покупки усреднения')
+                                    spot_price = spot_prices.get(symbol)
+                                    linear_price = linear_prices.get(symbol)
 
 
-                                if side == 'Buy':
-                                    if prev_price < current_price:
-                                        print('No averaging for buy')
+                                    if row['order_type'] == 'spot':
+                                        category = 'spot'
+                                        #print(row['order_type'])
+                                        current_price = float(spot_price)
+                                        limit_volume = max_trade / current_price
+                                        if extra_volume + prev_volume >= limit_volume:
+                                            extra_volume = limit_volume - prev_volume
+                                        limit_budget = float(budget_map[row['owner_id']]) / current_price
+                                        if extra_volume > limit_budget:
+                                            extra_volume = limit_budget
+
+                                        extra_volume = adjust_quantity(extra_volume, spot_min_volume, spot_qty_tick)
+                                        print(extra_volume, 'extra_volume')
                                     else:
-                                        print('lets check averaging details for buy')
-                                        per_cent = abs(current_price - prev_price) / prev_price * 100
-                                        if per_cent >= averaging_step:
-                                            print(f'lets buy extra {extra_volume}')
-                                            trade_type = user['trade_type'].iloc[0]
-                                            print(trade_type)
-                                            if trade_type == 'demo':
-                                                api_url = order_demo_url
-                                                api_key = user['demo_api_key'].iloc[0]
-                                                secret_key = user['demo_secret_key'].iloc[0]
-                                                orderLinkId = f"{str(row['owner_id'])}_demo_aver_{uuid.uuid4().hex[:8]}"
-                                                # print('orderLinkId', orderLinkId)
-                                            else:
-                                                api_url = order_trade_url
-                                                api_key = user['main_api_key'].iloc[0]
-                                                secret_key = user['main_secret_key'].iloc[0]
-                                                orderLinkId = f"{str(row['owner_id'])}_real_aver_{uuid.uuid4().hex[:8]}"
+                                        current_price = float(linear_price)
+                                        limit_volume = max_trade / current_price
+                                        if extra_volume + prev_volume >= limit_volume:
+                                            extra_volume = limit_volume - prev_volume
+                                        limit_budget = float(budget_map[row['owner_id']]) / current_price
+                                        if extra_volume > limit_budget:
+                                            extra_volume = limit_budget
 
-                                            res = await universal_market_order(api_url, str(api_key), str(secret_key), category, symbol,
-                                                                          side, extra_volume, orderLinkId)
-                                            print(res)
+                                        category = 'linear'
+                                        extra_volume = adjust_quantity(extra_volume, linear_min_volume, linear_qty_tick)
+                                        print(extra_volume, 'extra_volume')
 
-                                            if isinstance(res, dict) and res.get('retMsg') == 'OK':
-                                                result = res.get('result')
-                                                orderLinkId = result.get('orderLinkId')
-                                                depends = row['bybit_id']
-                                                pos = {
-                                                    "bybit_id": orderLinkId,
-                                                    "owner_id": int(row['owner_id']),
-                                                    "market": user['trade_type'].iloc[0],
-                                                    "order_type": category,
-                                                    "symbol": symbol,
-                                                    "side": side,
-                                                    'type': 'averaging',
-                                                    'depends_on': depends,
-                                                }
+                                    if extra_volume == -1:
+                                        print('Недостаточно объема для минимальной покупки усреднения')
 
-                                                await positions_op.upsert_position(pos)
-                                                print('Добавлен', orderLinkId)
 
-                                if side == 'Sell':
-                                    print(prev_price, current_price)
-                                    if prev_price > current_price:
-                                        print('No averaging for sell - linears only')
-                                    else:
-                                        print('lets check averaging details for short - linears only')
-                                        per_cent = abs(current_price - prev_price) / prev_price * 100
-                                        if per_cent >= averaging_step:
-                                            print(f'lets sell extra {extra_volume}')
+                                    if side == 'Buy':
+                                        if prev_price < current_price:
+                                            print('No averaging for buy')
+                                        else:
+                                            print('lets check averaging details for buy')
+                                            per_cent = abs(current_price - prev_price) / prev_price * 100
+                                            if per_cent >= averaging_step:
+                                                print(f'lets buy extra {extra_volume}')
+                                                trade_type = user['trade_type'].iloc[0]
+                                                print(trade_type)
+                                                if trade_type == 'demo':
+                                                    api_url = order_demo_url
+                                                    api_key = user['demo_api_key'].iloc[0]
+                                                    secret_key = user['demo_secret_key'].iloc[0]
+                                                    orderLinkId = f"{str(row['owner_id'])}_demo_aver_{uuid.uuid4().hex[:8]}"
+                                                    # print('orderLinkId', orderLinkId)
+                                                else:
+                                                    api_url = order_trade_url
+                                                    api_key = user['main_api_key'].iloc[0]
+                                                    secret_key = user['main_secret_key'].iloc[0]
+                                                    orderLinkId = f"{str(row['owner_id'])}_real_aver_{uuid.uuid4().hex[:8]}"
 
-                                            trade_type = user['trade_type'].iloc[0]
-                                            print(trade_type)
-                                            if trade_type == 'demo':
-                                                api_url = order_demo_url
-                                                api_key = user['demo_api_key'].iloc[0]
-                                                secret_key = user['demo_secret_key'].iloc[0]
-                                                orderLinkId = f"{str(row['owner_id'])}_demo_linear_aver_{uuid.uuid4().hex[:8]}"
-                                                print('orderLinkId', orderLinkId)
-                                            else:
-                                                api_url = order_trade_url
-                                                api_key = user['main_api_key'].iloc[0]
-                                                print('api_key', api_key)
-                                                secret_key = user['main_secret_key'].iloc[0]
-                                                print('api_key', api_key)
-                                                orderLinkId = f"{str(row['owner_id'])}_real_linear_aver_{uuid.uuid4().hex[:8]}"
-                                                print('orderLinkId', orderLinkId)
+                                                res = await universal_market_order(api_url, str(api_key), str(secret_key), category, symbol,
+                                                                              side, extra_volume, orderLinkId)
+                                                print(res)
 
-                                            res = await universal_market_order(api_url, str(api_key), str(secret_key), category, symbol,
-                                                                          side, extra_volume, orderLinkId)
-                                            print(res)
-                                            if isinstance(res, dict) and res.get('retMsg') == 'OK':
-                                                result = res.get('result')
-                                                orderLinkId = result.get('orderLinkId')
-                                                depends = row['bybit_id']
-                                                pos = {
-                                                    "bybit_id": orderLinkId,
-                                                    "owner_id": int(row['owner_id']),
-                                                    "market": user['trade_type'].iloc[0],
-                                                    "order_type": category,
-                                                    "symbol": symbol,
-                                                    "side": side,
-                                                    'type': 'averaging',
-                                                    'depends_on': depends,
-                                                }
+                                                if isinstance(res, dict) and res.get('retMsg') == 'OK':
+                                                    result = res.get('result')
+                                                    orderLinkId = result.get('orderLinkId')
+                                                    depends = row['bybit_id']
+                                                    pos = {
+                                                        "bybit_id": orderLinkId,
+                                                        "owner_id": int(row['owner_id']),
+                                                        "market": user['trade_type'].iloc[0],
+                                                        "order_type": category,
+                                                        "symbol": symbol,
+                                                        "side": side,
+                                                        'type': 'averaging',
+                                                        'depends_on': depends,
+                                                    }
 
-                                                await positions_op.upsert_position(pos)
-                                                print('Добавлен', orderLinkId)
+                                                    await positions_op.upsert_position(pos)
+                                                    print('Добавлен', orderLinkId)
 
+                                    if side == 'Sell':
+                                        print(prev_price, current_price)
+                                        if prev_price > current_price:
+                                            print('No averaging for sell - linears only')
+                                        else:
+                                            print('lets check averaging details for short - linears only')
+                                            per_cent = abs(current_price - prev_price) / prev_price * 100
+                                            if per_cent >= averaging_step:
+                                                print(f'lets sell extra {extra_volume}')
+
+                                                trade_type = user['trade_type'].iloc[0]
+                                                print(trade_type)
+                                                if trade_type == 'demo':
+                                                    api_url = order_demo_url
+                                                    api_key = user['demo_api_key'].iloc[0]
+                                                    secret_key = user['demo_secret_key'].iloc[0]
+                                                    orderLinkId = f"{str(row['owner_id'])}_demo_linear_aver_{uuid.uuid4().hex[:8]}"
+                                                    print('orderLinkId', orderLinkId)
+                                                else:
+                                                    api_url = order_trade_url
+                                                    api_key = user['main_api_key'].iloc[0]
+                                                    print('api_key', api_key)
+                                                    secret_key = user['main_secret_key'].iloc[0]
+                                                    print('api_key', api_key)
+                                                    orderLinkId = f"{str(row['owner_id'])}_real_linear_aver_{uuid.uuid4().hex[:8]}"
+                                                    print('orderLinkId', orderLinkId)
+
+                                                res = await universal_market_order(api_url, str(api_key), str(secret_key), category, symbol,
+                                                                              side, extra_volume, orderLinkId)
+                                                print(res)
+                                                if isinstance(res, dict) and res.get('retMsg') == 'OK':
+                                                    result = res.get('result')
+                                                    orderLinkId = result.get('orderLinkId')
+                                                    depends = row['bybit_id']
+                                                    pos = {
+                                                        "bybit_id": orderLinkId,
+                                                        "owner_id": int(row['owner_id']),
+                                                        "market": user['trade_type'].iloc[0],
+                                                        "order_type": category,
+                                                        "symbol": symbol,
+                                                        "side": side,
+                                                        'type': 'averaging',
+                                                        'depends_on': depends,
+                                                    }
+
+                                                    await positions_op.upsert_position(pos)
+                                                    print('Добавлен', orderLinkId)
+                            except Exception as e:
+                                print(f"Ошибка в блоке START AVERAGING TRADE LOGIC по отдельной позиции: {e}")
+                                traceback.print_exc()
 
                     except Exception as e:
                         print(f"Ошибка в блоке START AVERAGING TRADE LOGIC: {e}")
@@ -827,7 +852,7 @@ async def tp_execution(database_url, price_queue):
         try:
             # находим позиции, в которых куплен актив (монета/фьюч) без тейк профита
             closed_positions_no_tp = (await positions_op.get_positions_by_fields(
-                {'orderStatus': True, 'tp_opened': False, 'depends_on': '-1',
+                {'orderStatus': True, 'tp_opened': False, 'depends_on': '-1', 'finished': False
                 }))
 
             if closed_positions_no_tp.empty:
@@ -846,7 +871,7 @@ async def tp_execution(database_url, price_queue):
                         current_price = float(linear_prices.get(row['symbol']))
                     else:
                         current_price = float(spot_prices.get(row['symbol']))
-                    # print(row)
+                    # print('row', row)
                     prev_price = float(row['avgPrice'])
 
                     x = user['tp_min'].iloc[0]
@@ -916,11 +941,11 @@ async def tp_execution(database_url, price_queue):
                                     user['main_api_key'].iloc[0]
                                 tp_secret_key = user['demo_secret_key'].iloc[0] if user['trade_type'].iloc[0] == 'demo' else \
                                     user['main_secret_key'].iloc[0]
-                                print('Открываем спот первичный ТП на условиях',
-                                      tp_api_url, tp_api_key, tp_secret_key,
-                                      symbol, tp_side, qty_info,
-                                      triggerPrice, orderLinkId
-                                      )
+                                # print('Открываем спот первичный ТП на условиях',
+                                #       tp_api_url, tp_api_key, tp_secret_key,
+                                #       symbol, tp_side, qty_info,
+                                #       triggerPrice, orderLinkId
+                                #       )
                                 position = await universal_spot_conditional_market_order(tp_api_url, tp_api_key, tp_secret_key,
                                                       symbol, tp_side, qty_info,
                                                       triggerPrice, orderLinkId)
@@ -1042,10 +1067,10 @@ async def tp_execution(database_url, price_queue):
 
                     tp_secret_key = user['demo_secret_key'].iloc[0] if user['trade_type'].iloc[0] == 'demo' else \
                         user['main_secret_key'].iloc[0]
-                    print('Меняем спот ТП на условиях',
-                          amend_order_url, tp_api_key, tp_secret_key,
-                          symbol, new_triggerPrice, prev_orderLinkId
-                          )
+                    # print('Меняем спот ТП на условиях',
+                    #       amend_order_url, tp_api_key, tp_secret_key,
+                    #       symbol, new_triggerPrice, prev_orderLinkId
+                    #       )
                     res = await amend_spot_conditional_market_order(
                         amend_order_url, tp_api_key, tp_secret_key,
                         symbol, new_triggerPrice, prev_orderLinkId)
@@ -1104,7 +1129,84 @@ async def daily_task():
 
                     positions_op = PositionsOperations(DATABASE_URL)
                     user_op = UsersOperations(DATABASE_URL)
+###############################
 
+                    # отменяем ордера, которые не исполнились в течение 300 минут
+                    # находим и обрабатываем ордера, утерянные из-за сбоя api
+                    try:
+                        open_positions = await positions_op.get_positions_by_fields({"orderStatus": False,
+                                                                                     "type": "main"})
+                        if not open_positions.empty:
+                            current_time = datetime.now()
+                            for index, position in open_positions.iterrows():
+                                try:
+                                    if position['market'] == 'demo':
+                                        res = await get_order_by_id(position['owner_id'], position['order_type'],
+                                                                    position['bybit_id'], demo=True)
+                                    else:
+                                        res = await get_order_by_id(position['owner_id'], position['order_type'],
+                                                                    position['bybit_id'], demo=None)
+
+                                    # print('res', res)
+                                    if res != -1 and res[0] == 'Deactivated':
+                                        # print('Change', position['bybit_id'], position['symbol'], 'it filled')
+                                        order_data = {
+                                            "bybit_id": position['bybit_id'],
+                                            "orderStatus": True,
+                                            # try
+                                            "finished": True
+                                        }
+                                        await positions_op.upsert_position(order_data)
+
+                                    if res != -1 and res[0] == "Filled":
+                                        print('Change', position['bybit_id'], position['symbol'], 'it filled')
+                                        order_data = {
+                                            "bybit_id": position['bybit_id'],
+                                            "orderStatus": True,
+                                            "avgPrice": res[1].get('avgPrice'),
+                                            "cumExecValue": res[1].get('cumExecValue'),
+                                            "cumExecQty": res[1].get('cumExecQty'),
+                                            "cumExecFee": res[1].get('cumExecFee'),
+                                            # try
+                                            "finished": False
+                                        }
+                                        await positions_op.upsert_position(order_data)
+                                    else:
+                                        created_time = datetime.fromisoformat(position['created'])
+                                        time_difference = current_time - created_time
+                                        difference_in_minutes = time_difference.total_seconds() / 60
+                                        if difference_in_minutes >= 300:
+
+                                            print('S momenta sozdaniya ordera', difference_in_minutes, position['bybit_id'],
+                                                  position['symbol'], "отменяем ордер")
+                                            print('order_id', res[1].get('orderId'))
+                                            if position['market'] == 'demo':
+                                                await cancel_order_by_id(position['owner_id'], position['order_type'],
+                                                                         position['symbol'],
+                                                                         res[1].get('orderId'), demo=True)
+                                            else:
+                                                await cancel_order_by_id(position['owner_id'], position['order_type'],
+                                                                         position['symbol'],
+                                                                         res[1].get('orderId'), demo=None)
+                                            order_data = {
+                                                "bybit_id": position['bybit_id'],
+                                                "finished": True,
+                                                "orderStatus": True,
+                                                "tp_opened": True,
+                                            }
+                                            await positions_op.upsert_position(order_data)
+                                except Exception as e:
+                                    print(f"Ошибка в процессе обработки старых и потерянных в API ордеров, на отдельной позиции: {e}")
+                                    traceback.print_exc()
+
+                                    ####
+                    except Exception as e:
+                        print(f"Ошибка в процессе обработки старых и потерянных в API ордеров: {e}")
+                        traceback.print_exc()
+
+
+
+###############################
                     try:
                         # по всем юзерам
                         open_positions_from_db = await positions_op.get_positions_by_fields(
@@ -1126,10 +1228,14 @@ async def daily_task():
                             ]
 
                             results = await asyncio.gather(*tasks)
-                            #print('results', results)
 
                             main_res = results[0]
                             demo_res = results[1]
+                            if main_res == -1 or demo_res == -1:
+                                print('Ошибка сервера - пропускаем')
+                                await asyncio.sleep(0.2)
+                                continue
+
                             if main_res:
                                 main_active_positions = [element.get('symbol') for element in main_res]
                             else:
@@ -1140,11 +1246,8 @@ async def daily_task():
                             else:
                                 demo_active_positions = []
                             all_open_api = main_active_positions + demo_active_positions
-
-                            #print('all_open_api', all_open_api)
                             set_api = set(all_open_api)
-                            # print('all_open_api', set_api)
-                            # # фильтруем общие позиции юзера, который обрабатывается в цикле
+
                             if open_positions_from_db.empty:
                                 set_db = set()
                             else:
@@ -1154,7 +1257,9 @@ async def daily_task():
                                 # print(telegram_id, 'set_api - 1', set_api)
                             #
                             not_in_api = list(set_db - set_api)
+                            # print('not_in_api',  telegram_id, not_in_api)
                             for position in not_in_api:
+                                print('меняем finished на true', telegram_id, position)
                                 to_change = user_open_pos_from_db[user_open_pos_from_db['symbol'] == position]['bybit_id'].iloc[0]
                                 await positions_op.upsert_position({
                                     'bybit_id': to_change,
@@ -1169,6 +1274,7 @@ async def daily_task():
                             for element in demo_res:
                                 if element.get('symbol') in not_in_db:
                                     print('to insert demo', element.get('symbol'))
+                                    #print('element', element)
                                     location = 'demo'
                                     orderLinkId = f'{telegram_id}_{location}_linear_{uuid.uuid4().hex[:12]}'
 
@@ -1180,12 +1286,18 @@ async def daily_task():
                                         'order_type': 'linear',
                                         'symbol': element.get('symbol'),
                                         'side': element.get('side'),
+
+                                        # точно???
                                         'orderStatus': True,
+                                        #'orderStatus': False,
                                         'avgPrice': element.get('avgPrice'),
                                         'cumExecValue': element.get('positionValue'),
                                         'cumExecQty': element.get('size'),
                                         'cumExecFee': str(float(element.get('size')) * 0.001),
+                                        # try
+                                        "finished": False
                                     }
+                                    print(pos_data)
                                     await positions_op.upsert_position(pos_data)
 
                             for element in main_res:
@@ -1207,8 +1319,10 @@ async def daily_task():
                                         'cumExecValue': element.get('positionValue'),
                                         'cumExecQty': element.get('size'),
                                         'cumExecFee': str(float(element.get('size')) * 0.001),
+                                        # try
+                                        "finished": False,
                                     }
-                                    print('vnesti v BD' , pos_data)
+                                    print('vnesti v BD', pos_data)
 
                                     await positions_op.upsert_position(pos_data)
                     except Exception as e:
@@ -1258,65 +1372,6 @@ async def daily_task():
 
                     except Exception as e:
                         print(f"Ошибка в процессе обработки полностью исполненных спотовых позиций: {e}")
-                        traceback.print_exc()
-
-                    # отменяем ордера, которые не исполнились в течение 300 минут
-                    # находим и обрабатываем ордера, утерянные из-за сбоя api
-                    try:
-                        open_positions = await positions_op.get_positions_by_fields({"orderStatus": False,
-                                                                                     "type": "main"})
-                        if not open_positions.empty:
-                            current_time = datetime.now()
-                            for index, position in open_positions.iterrows():
-                                try:
-                                    if position['market'] == 'demo':
-                                        res = await get_order_by_id(position['owner_id'], position['order_type'],
-                                                                    position['bybit_id'], demo=True)
-                                    else:
-                                        res = await get_order_by_id(position['owner_id'], position['order_type'],
-                                                                    position['bybit_id'], demo=None)
-                                    if res[0] == "Filled":
-                                        print('Change', position['bybit_id'], position['symbol'], 'it filled')
-                                        order_data = {
-                                            "bybit_id": position['bybit_id'],
-                                            "orderStatus": True,
-                                            "avgPrice": res[1].get('avgPrice'),
-                                            "cumExecValue": res[1].get('cumExecValue'),
-                                            "cumExecQty": res[1].get('cumExecQty'),
-                                            "cumExecFee": res[1].get('cumExecFee'),
-                                        }
-                                        await positions_op.upsert_position(order_data)
-                                    else:
-                                        created_time = datetime.fromisoformat(position['created'])
-                                        time_difference = current_time - created_time
-                                        difference_in_minutes = time_difference.total_seconds() / 60
-                                        if difference_in_minutes >= 300:
-
-                                            print('S momenta sozdaniya ordera', difference_in_minutes, position['bybit_id'],
-                                                  position['symbol'], "отменяем ордер")
-                                            print('order_id', res[1].get('orderId'))
-                                            if position['market'] == 'demo':
-                                                await cancel_order_by_id(position['owner_id'], position['order_type'],
-                                                                         position['symbol'],
-                                                                         res[1].get('orderId'), demo=True)
-                                            else:
-                                                await cancel_order_by_id(position['owner_id'], position['order_type'],
-                                                                         position['symbol'],
-                                                                         res[1].get('orderId'), demo=None)
-                                            order_data = {
-                                                "bybit_id": position['bybit_id'],
-                                                "finished": True,
-                                                "orderStatus": True,
-                                                "tp_opened": True,
-                                            }
-                                            await positions_op.upsert_position(order_data)
-                                except Exception as e:
-                                    print(f"Ошибка в процессе обработки старых и потерянных в API ордеров, на отдельной позиции: {e}")
-                                    traceback.print_exc()
-
-                                    ####
-                    except Exception as e:
-                        print(f"Ошибка в процессе обработки старых и потерянных в API ордеров: {e}")
                         traceback.print_exc()
 
                 except Exception as e:

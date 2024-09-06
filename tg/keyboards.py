@@ -30,24 +30,24 @@ class Keyboards:
     async def buy_subscription(self, params):
 
         btn_1 = InlineKeyboardButton(
-            text='1 МЕСЯЦ',
+            text=f'1 МЕСЯЦ {params.get('1 МЕСЯЦ').get('cost')} 💰',
             callback_data='one_month',
         )
         btn_2 = InlineKeyboardButton(
-            text='6 МЕСЯЦЕВ',
+            text=f'6 МЕСЯЦЕВ {params.get('6 МЕСЯЦЕВ').get('cost')} 💰',
             callback_data='six_month'
         )
         btn_3 = InlineKeyboardButton(
-            text='1 ГОД',
+            text=f'1 ГОД {params.get('1 ГОД').get('cost')} 💰',
             callback_data='one_year'
         )
         btn_4 = InlineKeyboardButton(
-            text='НАВСЕГДА',
+            text=f'НАВСЕГДА {params.get('НАВСЕГДА').get('cost')} 💰',
             callback_data='forewer'
         )
 
         btn_5 = InlineKeyboardButton(
-            text='Главное меню',
+            text='📛 Главное меню 📛',
             callback_data='main_menu'
         )
 
@@ -102,42 +102,48 @@ class Keyboards:
 
 
         btn_1 = InlineKeyboardButton(
-            text=btn_demo,
+            text=f'✅ {btn_demo} ✅',
             callback_data='stop_demo',
         )
         btn_2 = InlineKeyboardButton(
-            text='Запросить PNL',
+            text='🤑 Запросить PNL 🤑',
             callback_data='menu_PNL'
         )
         btn_3 = InlineKeyboardButton(
-            text=btn_trade,
+            text=f'💰 {btn_trade} 💰',
             callback_data='stop_trade'
         )
         btn_4 = InlineKeyboardButton(
-            text='Настройки торговли',
+            text='⚙️ Настройки торговли ⚙️',
             callback_data='settings'
         )
 
         btn_5 = InlineKeyboardButton(
-            text='Обновить API ключи',
+            text='🔑 Обновить API ключи 🔑',
             callback_data='change_api'
         )
 
         btn_6 = InlineKeyboardButton(
-            text='Управлять подпиской',
+            text='🚧 Управлять подпиской 🚧',
             callback_data='manage_subscription'
+        )
+
+        btn_7 = InlineKeyboardButton(
+            text='⛔️ ЗАКРЫТЬ ВСЕ ПОЗИЦИИ ⛔️',
+            callback_data='stop_all'
         )
 
 
         our_menu = [[btn_1, btn_2],
                     [btn_3, btn_4],
-                    [btn_5, btn_6],]
+                    [btn_5, btn_6],
+                    [btn_7],]
 
 
         # Проверка на админские права и добавление кнопки
         if int(params.get('telegram_id')) == int(ADMIN_ID):
             btn_admin = InlineKeyboardButton(
-                text='Админ меню',
+                text='🚨 Админка 🚨',
                 callback_data='admin_menu'
             )
             our_menu.append([btn_admin])
@@ -287,6 +293,26 @@ class Keyboards:
             ]
             return InlineKeyboardMarkup(inline_keyboard=our_menu)
 
+# ####### ЗАКРЫТЬ ВСЕ ПОЗИЦИИ (юзер) ########
+#             ############
+#               #####
+
+
+    async def confirm_stop(self, params):
+        btn_1 = InlineKeyboardButton(
+            text="Закрыть всё",
+            callback_data='confirm_stop',
+        )
+        btn_2 = InlineKeyboardButton(
+            text='Главное меню',
+            callback_data='main_menu'
+        )
+        our_menu = [
+            [btn_1, ],
+            [btn_2],
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=our_menu)
+
 # ####### НАСТРОЙКИ ТОРГОВЛИ ########
 #             ############
 #               #####
@@ -338,7 +364,7 @@ class Keyboards:
             )
 
             btn_5 = InlineKeyboardButton(
-                 text= f'Шаг укрупнения {params.get('averaging_size')}',
+                 text= f'Множитель объема ордеров {params.get('averaging_size')}',
                  callback_data='settings_averaging_size',
             )
 
@@ -347,17 +373,17 @@ class Keyboards:
                 item = 0
 
             btn_6 = InlineKeyboardButton(
-                 text= f'Условия укрупнения {item}%',
+                 text= f'Отклонение цены {item}%',
                  callback_data='settings_averaging_step',
             )
 
             btn_7 = InlineKeyboardButton(
-                 text= f'Откр. тейк проф при изм. цены {params.get('tp_min')}%',
+                 text= f'Take Profit {params.get('tp_min')}%',
                  callback_data='settings_tp_min',
             )
 
             btn_8 = InlineKeyboardButton(
-                 text= f'Тейк проф за ценой {params.get('tp_step')}%',
+                 text= f'Trailing отклонение {params.get('tp_step')}%',
                  callback_data='settings_tp_step',
             )
 
@@ -367,7 +393,7 @@ class Keyboards:
             )
 
             btn_10 = InlineKeyboardButton(
-                text='Режим открытия позиций',
+                text='Trailing Buy',
                 callback_data='settings_trade_pair_if'
             )
 
@@ -391,23 +417,31 @@ class Keyboards:
 
 
     async def coins_settings(self, params):
-        if "-1" in params.get('trading_pairs'):
-            text_1 = "Торг. новыми монетами. Выключить?"
+        tr_p = params.get('trading_pairs')
+        if "-1" in tr_p:
+            text_1 = "✅ Торг. новыми монетами. Выключить?"
         else:
-            text_1 = "Торг. новыми монетами. Включить?"
+            text_1 = "⛔️ Торг. новыми монетами. Включить?"
 
         btn_1 = InlineKeyboardButton(
              text= text_1,
              callback_data='new_coins_on_off',
         )
-
+        if "-1" not in tr_p and tr_p:
+            text_2 = '✅ Выбран список торгуемых монет'
+        else:
+            text_2 = '⛔️ Список торгю монет не выбран'
         btn_2 = InlineKeyboardButton(
-             text='Выбрать торгуемые монеты вручную',
+             text=text_2,
              callback_data='chose_coins',
         )
 
+        if not tr_p:
+            text_3 = '✅ Включена торговля всеми монетами'
+        else:
+            text_3 = '⛔️ Торговля всеми монетами не выбрана'
         btn_3 = InlineKeyboardButton(
-             text='Включить торговлю всеми монетами',
+             text=text_3,
              callback_data='all_coins',
         )
 
